@@ -111,14 +111,41 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     const slug = modulo.toLowerCase();
     if (slug.includes('compra') || slug.includes('fornec') || slug.includes('supriment'))
       return 'compras';
-    if (slug.includes('estoque') || slug.includes('fefo')) return 'estoque';
-    if (slug.includes('patrimon')) return 'patrimonio';
-    if (slug.includes('projet')) return 'projetos';
-    if (slug.includes('document') || slug.includes('ged')) return 'documentos';
-    if (slug.includes('seguranc') || slug.includes('audit')) return 'seguranca';
-    if (slug.includes('lgpd') || slug.includes('privacid')) return 'lgpd';
-    if (slug.includes('manutenc')) return 'manutencao';
-    return 'estoque';
+    if (slug.includes('estoque') || slug.includes('fefo') || slug.includes('almoxarif'))
+      return 'estoque';
+    if (slug.includes('patrimon') || slug.includes('ativo') || slug.includes('qr'))
+      return 'patrimonio';
+    if (
+      slug.includes('projet') ||
+      slug.includes('tarefa') ||
+      slug.includes('kanban') ||
+      slug.includes('iniciativa')
+    )
+      return 'projetos';
+    if (
+      slug.includes('document') ||
+      slug.includes('ged') ||
+      slug.includes('arquivo') ||
+      slug.includes('alvara')
+    )
+      return 'documentos';
+    if (
+      slug.includes('seguranc') ||
+      slug.includes('audit') ||
+      slug.includes('rbac') ||
+      slug.includes('acesso')
+    )
+      return 'seguranca';
+    if (
+      slug.includes('lgpd') ||
+      slug.includes('privacid') ||
+      slug.includes('ropa') ||
+      slug.includes('governanc')
+    )
+      return 'lgpd';
+    if (slug.includes('manutenc') || slug.includes('sla') || slug.includes('equipament'))
+      return 'manutencao';
+    return 'projetos';
   }, [modulo]);
 
   const carregarDados = async () => {
