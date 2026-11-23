@@ -11,6 +11,7 @@ import { ProducaoPcpPage } from './pages/erp/ProducaoPcpPage';
 import { FichasTecnicasPage } from './pages/erp/FichasTecnicasPage';
 import { QualidadeBpfPage } from './pages/erp/QualidadeBpfPage';
 import { RecursosHumanosPage } from './pages/erp/RecursosHumanosPage';
+import { CrmAtendimentoPage } from './pages/erp/CrmAtendimentoPage';
 import { ModuloCorporativoUnificadoPage } from './pages/erp/ModuloCorporativoUnificadoPage';
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
             <Route path="fichas-tecnicas" element={<FichasTecnicasPage />} />
             <Route path="qualidade" element={<QualidadeBpfPage />} />
             <Route path="rh" element={<RecursosHumanosPage />} />
+            <Route path="crm" element={<CrmAtendimentoPage />} />
             <Route path=":modulo" element={<ModuloCorporativoUnificadoPage />} />
           </Route>
 
