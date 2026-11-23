@@ -11,6 +11,9 @@ import {
   MapPin,
   Clock,
   Phone,
+  ThermometerSnowflake,
+  ClipboardCheck,
+  QrCode,
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
@@ -19,50 +22,78 @@ export const LandingPage: React.FC = () => {
       nome: 'Entremet Frutas Vermelhas & Baunilha',
       categoria: 'Signature Pâtisserie',
       preco: 'R$ 28,90',
-      descricao: 'Mousse leve de baunilha de Madagascar, inserto de framboesa fresca e glaçagem espelhada.',
+      descricao:
+        'Mousse leve de baunilha de Madagascar, inserto de framboesa fresca e glaçagem espelhada.',
     },
     {
       nome: 'Torta Ópera 70% Cacau',
       categoria: 'Clássico Francês',
       preco: 'R$ 26,50',
-      descricao: 'Camadas de biscuit Joconde embebido em café especial, ganache intenso e creme de manteiga.',
+      descricao:
+        'Camadas de biscuit Joconde embebido em café especial, ganache intenso e creme de manteiga.',
     },
     {
       nome: 'Croissant Folhado Manteiga Extra',
       categoria: 'Viennoiserie Artesanal',
       preco: 'R$ 16,90',
-      descricao: 'Fermentação natural de 48h com laminação francesa crocante e miolo alveolado.',
+      descricao:
+        'Fermentação natural de 48h com laminação francesa crocante e miolo alveolado.',
     },
     {
       nome: 'Coffret 12 Macarons Assortidos',
       categoria: 'Presentes & Eventos',
       preco: 'R$ 78,00',
-      descricao: 'Pistache iraniano, caramelo salgado, frutas vermelhas, limão siciliano e chocolate belga.',
+      descricao:
+        'Pistache iraniano, caramelo salgado, frutas vermelhas, limão siciliano e chocolate belga.',
     },
   ];
 
+  const rolarParaSecao = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    const elemento = document.getElementById(id);
+    if (elemento) {
+      elemento.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FBF5EE] text-[#542C20] flex flex-col">
-      {/* Barra Superior */}
+      {/* Barra Superior Fixa */}
       <header className="sticky top-0 z-40 bg-[#FBF5EE]/95 backdrop-blur border-b border-[#E8D4BC]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
+          <a
+            href="#topo"
+            onClick={(e) => rolarParaSecao(e, 'topo')}
+            className="block"
+          >
             <span className="font-serif text-2xl font-bold text-[#701D2B] tracking-tight">
               DoceGestão
             </span>
             <span className="block text-[10px] uppercase tracking-[0.2em] text-[#C69A55] font-bold">
               Pâtisserie & Café • ERP Integrado
             </span>
-          </div>
+          </a>
 
           <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-[#542C20]">
-            <a href="#colecao" className="hover:text-[#701D2B] transition-colors">
+            <a
+              href="#colecao"
+              onClick={(e) => rolarParaSecao(e, 'colecao')}
+              className="hover:text-[#701D2B] transition-colors py-1"
+            >
               Coleção Artesanal
             </a>
-            <a href="#diferenciais" className="hover:text-[#701D2B] transition-colors">
+            <a
+              href="#diferenciais"
+              onClick={(e) => rolarParaSecao(e, 'diferenciais')}
+              className="hover:text-[#701D2B] transition-colors py-1"
+            >
               Qualidade & Rastreabilidade
             </a>
-            <a href="#unidade" className="hover:text-[#701D2B] transition-colors">
+            <a
+              href="#unidade"
+              onClick={(e) => rolarParaSecao(e, 'unidade')}
+              className="hover:text-[#701D2B] transition-colors py-1"
+            >
               Unidade Flagship
             </a>
           </nav>
@@ -87,7 +118,7 @@ export const LandingPage: React.FC = () => {
       </header>
 
       {/* Hero Principal */}
-      <main className="flex-1">
+      <main id="topo" className="flex-1">
         <section className="max-w-7xl mx-auto px-6 py-16 lg:py-24 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7 space-y-6">
             <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F5E8D8] border border-[#E8D4BC] text-[#701D2B] text-xs font-bold">
@@ -156,8 +187,8 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        {/* Coleção em Destaque */}
-        <section id="colecao" className="max-w-7xl mx-auto px-6 py-12">
+        {/* Seção 1: Coleção em Destaque */}
+        <section id="colecao" className="scroll-mt-24 max-w-7xl mx-auto px-6 py-12">
           <div className="mb-8">
             <span className="text-xs font-bold uppercase tracking-wider text-[#701D2B]">
               Vitrine Gastronômica
@@ -194,10 +225,63 @@ export const LandingPage: React.FC = () => {
             ))}
           </div>
         </section>
+
+        {/* Seção 2: Qualidade & Rastreabilidade */}
+        <section id="diferenciais" className="scroll-mt-24 max-w-7xl mx-auto px-6 py-12">
+          <div className="bg-white p-8 rounded-3xl border border-[#E8D4BC] space-y-8">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#701D2B]">
+                Segurança dos Alimentos & Governança BPF
+              </span>
+              <h2 className="font-serif text-3xl font-bold text-[#542C20] mt-1">
+                Qualidade & Rastreabilidade Ponta a Ponta
+              </h2>
+              <p className="text-xs sm:text-sm text-[#7F7269] mt-2 max-w-3xl">
+                Cada receita, insumo e lote produzido é rastreado em tempo real no ERP DoceGestão,
+                garantindo conformidade sanitária, controle rigoroso de alergênicos e transparência.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="p-5 rounded-2xl bg-[#FBF5EE] border border-[#E8D4BC] space-y-2.5">
+                <ThermometerSnowflake className="w-6 h-6 text-[#701D2B]" />
+                <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                  Monitoramento da Cadeia Fria
+                </h3>
+                <p className="text-xs text-[#7F7269] leading-relaxed">
+                  Registros periódicos de temperatura em câmaras de resfriamento (0°C a 4°C) e
+                  congelamento (-18°C), com bloqueio automático de lotes fora da faixa.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#FBF5EE] border border-[#E8D4BC] space-y-2.5">
+                <ClipboardCheck className="w-6 h-6 text-[#C69A55]" />
+                <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                  Controle FEFO & Alergênicos
+                </h3>
+                <p className="text-xs text-[#7F7269] leading-relaxed">
+                  Baixa automática pelo critério First-Expire, First-Out (FEFO) e rotulagem
+                  detalhada de glúten, lactose, oleaginosas e derivados em todas as fichas técnicas.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#FBF5EE] border border-[#E8D4BC] space-y-2.5">
+                <QrCode className="w-6 h-6 text-emerald-700" />
+                <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                  Inspeção 100% & Liberação Humana
+                </h3>
+                <p className="text-xs text-[#7F7269] leading-relaxed">
+                  Nenhum lote segue para a vitrine ou delivery sem aprovação formal da equipe de
+                  Qualidade e rastreio completo da origem dos insumos até o pedido final.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
 
-      {/* Rodapé Institucional com Assinatura */}
-      <footer id="unidade" className="bg-[#542C20] text-[#F5E8D8] mt-12">
+      {/* Seção 3: Unidade Flagship & Rodapé Institucional */}
+      <footer id="unidade" className="scroll-mt-24 bg-[#542C20] text-[#F5E8D8] mt-12">
         <div className="max-w-7xl mx-auto px-6 py-10">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
             <div>
