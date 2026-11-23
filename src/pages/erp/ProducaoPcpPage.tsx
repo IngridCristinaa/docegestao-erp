@@ -38,7 +38,7 @@ interface FichaAprovada {
   rendimento_qtd: number;
   tempo_preparo_min: number;
   custo_total_receita: number;
-  produtos?: ProdutoResumo;
+  produtos?: ProdutoResumo | ProdutoResumo[] | null;
 }
 
 interface OrdemProducao {
@@ -60,15 +60,23 @@ interface OrdemProducao {
     | 'concluida'
     | 'cancelada';
   observacoes: string | null;
-  produtos?: ProdutoResumo;
-  fichas_tecnicas?: { versao_atual: number; custo_total_receita: number; rendimento_qtd: number };
+  produtos?: ProdutoResumo | ProdutoResumo[] | null;
+  fichas_tecnicas?:
+    | { versao_atual: number; custo_total_receita: number; rendimento_qtd: number }
+    | { versao_atual: number; custo_total_receita: number; rendimento_qtd: number }[]
+    | null;
 }
 
 interface ItemInsumoPrevisto {
   ingrediente_id: string;
   quantidade_bruta: number;
-  ingredientes?: { codigo: string; nome: string };
+  ingredientes?: { codigo: string; nome: string } | { codigo: string; nome: string }[] | null;
 }
+
+const extrairItem = <T,>(valor: T | T[] | null | undefined): T | undefined => {
+  if (!valor) return undefined;
+  return Array.isArray(valor) ? valor[0] : valor;
+};
 
 export const ProducaoPcpPage: React.FC = () => {
   const { podeEditar } = useAuth();
@@ -120,15 +128,17 @@ export const ProducaoPcpPage: React.FC = () => {
           .order('codigo', { ascending: false }),
         supabase
           .from('fichas_tecnicas')
-          .select('id, produto_id, versao_atual, rendimento_qtd, tempo_preparo_min, custo_total_receita, produtos(id, codigo_sku, nome)')
+          .select(
+            'id, produto_id, versao_atual, rendimento_qtd, tempo_preparo_min, custo_total_receita, produtos(id, codigo_sku, nome)'
+          )
           .eq('status', 'aprovada'),
       ]);
 
       if (resOrdens.error) throw resOrdens.error;
       if (resFichas.error) throw resFichas.error;
 
-      const listaOrdens = (resOrdens.data as OrdemProducao[]) || [];
-      const listaFichas = (resFichas.data as FichaAprovada[]) || [];
+      const listaOrdens = (resOrdens.data as unknown as OrdemProducao[]) || [];
+      const listaFichas = (resFichas.data as unknown as FichaAprovada[]) || [];
 
       setOrdens(listaOrdens);
       setFichasAprovadas(listaFichas);
@@ -168,7 +178,7 @@ export const ProducaoPcpPage: React.FC = () => {
         .select('ingrediente_id, quantidade_bruta, ingredientes(codigo, nome)')
         .eq('ficha_tecnica_id', formFichaId);
 
-      setInsumosFichaSelecionada((data as ItemInsumoPrevisto[]) || []);
+      setInsumosFichaSelecionada((data as unknown as ItemInsumoPrevisto[]) || []);
     };
     carregarInsumosDaFicha();
   }, [formFichaId]);
@@ -302,20 +312,20 @@ export const ProducaoPcpPage: React.FC = () => {
       .filter((o) => o.status !== 'cancelada')
       .reduce((acc, o) => acc + Number(o.quantidade_produzida || 0), 0);
 
-    const aderencia =
-      totalPlanejado > 0 ? (totalProduzido / totalPlanejado) * 100 : 0;
+    const aderencia = totalPlanejado > 0 ? (totalProduzido / totalPlanejado) * 100 : 0;
 
     return { ativas, concluidas, totalProduzido, aderencia };
   }, [ordens]);
 
   const ordensFiltradas = useMemo(() => {
     return ordens.filter((op) => {
+      const prod = extrairItem(op.produtos);
       const termo = busca.toLowerCase();
       const bateBusca =
         !termo ||
         op.codigo.toLowerCase().includes(termo) ||
-        (op.produtos?.nome || '').toLowerCase().includes(termo) ||
-        (op.produtos?.codigo_sku || '').toLowerCase().includes(termo);
+        (prod?.nome || '').toLowerCase().includes(termo) ||
+        (prod?.codigo_sku || '').toLowerCase().includes(termo);
       const bateStatus = filtroStatus === 'todos' || op.status === filtroStatus;
       return bateBusca && bateStatus;
     });
@@ -323,16 +333,19 @@ export const ProducaoPcpPage: React.FC = () => {
 
   const dadosCsv = useMemo(
     () =>
-      ordensFiltradas.map((op) => ({
-        Codigo_OP: op.codigo,
-        Data: op.data_programada,
-        SKU: op.produtos?.codigo_sku || '-',
-        Produto: op.produtos?.nome || '-',
-        Qtd_Planejada: op.quantidade_planejada,
-        Qtd_Produzida: op.quantidade_produzida,
-        Horario: `${op.hora_inicio_prevista} - ${op.hora_fim_prevista}`,
-        Status: op.status,
-      })),
+      ordensFiltradas.map((op) => {
+        const prod = extrairItem(op.produtos);
+        return {
+          Codigo_OP: op.codigo,
+          Data: op.data_programada,
+          SKU: prod?.codigo_sku || '-',
+          Produto: prod?.nome || '-',
+          Qtd_Planejada: op.quantidade_planejada,
+          Qtd_Produzida: op.quantidade_produzida,
+          Horario: `${op.hora_inicio_prevista} - ${op.hora_fim_prevista}`,
+          Status: op.status,
+        };
+      }),
     [ordensFiltradas]
   );
 
@@ -540,6 +553,8 @@ export const ProducaoPcpPage: React.FC = () => {
               ) : (
                 ordensFiltradas.map((op) => {
                   const st = traduzirStatus(op.status);
+                  const prod = extrairItem(op.produtos);
+                  const ft = extrairItem(op.fichas_tecnicas);
                   return (
                     <tr key={op.id} className="hover:bg-[#FBF5EE]">
                       <td className="py-3 px-4 font-bold text-[#701D2B]">{op.codigo}</td>
@@ -555,10 +570,10 @@ export const ProducaoPcpPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-3">
                         <div className="font-semibold text-[#542C20]">
-                          {op.produtos?.codigo_sku} — {op.produtos?.nome}
+                          {prod?.codigo_sku} — {prod?.nome}
                         </div>
                         <div className="text-[11px] text-[#7F7269]">
-                          Ficha v{op.fichas_tecnicas?.versao_atual || 1}
+                          Ficha v{ft?.versao_atual || 1}
                         </div>
                       </td>
                       <td className="py-3 px-3 font-semibold text-[#542C20]">
@@ -628,12 +643,15 @@ export const ProducaoPcpPage: React.FC = () => {
                   onChange={(e) => setFormFichaId(e.target.value)}
                   className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC] bg-white"
                 >
-                  {fichasAprovadas.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.produtos?.codigo_sku} — {f.produtos?.nome} (Ficha v{f.versao_atual} •
-                      Rende {f.rendimento_qtd} un)
-                    </option>
-                  ))}
+                  {fichasAprovadas.map((f) => {
+                    const prod = extrairItem(f.produtos);
+                    return (
+                      <option key={f.id} value={f.id}>
+                        {prod?.codigo_sku} — {prod?.nome} (Ficha v{f.versao_atual} • Rende{' '}
+                        {f.rendimento_qtd} un)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -712,13 +730,14 @@ export const ProducaoPcpPage: React.FC = () => {
                   </p>
                   <div className="space-y-1 text-[11px] text-[#542C20]">
                     {insumosFichaSelecionada.map((ins, i) => {
+                      const ing = extrairItem(ins.ingredientes);
                       const fator =
                         formQtdPlanejada / Math.max(1, Number(fichaEscolhidaObj.rendimento_qtd));
                       const qtdNecessaria = (Number(ins.quantidade_bruta) * fator).toFixed(1);
                       return (
                         <div key={i} className="flex justify-between">
                           <span>
-                            {ins.ingredientes?.codigo} — {ins.ingredientes?.nome}
+                            {ing?.codigo} — {ing?.nome}
                           </span>
                           <strong>{qtdNecessaria} g/ml (Reserva FEFO)</strong>
                         </div>
@@ -775,7 +794,7 @@ export const ProducaoPcpPage: React.FC = () => {
             </div>
             <form onSubmit={registrarApontamento} className="p-5 space-y-4 text-xs">
               <p className="text-[#542C20]">
-                Produto: <strong>{opApontamento.produtos?.nome}</strong>
+                Produto: <strong>{extrairItem(opApontamento.produtos)?.nome}</strong>
                 <br />
                 Quantidade Planejada: <strong>{opApontamento.quantidade_planejada} un</strong>
               </p>
