@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Plus, Minus, ArrowLeft, MapPin, CheckCircle2, Sparkles } from 'lucide-react';
+import {
+  ShoppingCart,
+  Plus,
+  Minus,
+  ArrowLeft,
+  MapPin,
+  CheckCircle2,
+  Sparkles,
+  Coffee,
+  CakeSlice,
+} from 'lucide-react';
 import { supabase, formatBRL, isSupabaseConfigured } from '../lib/supabase';
 
 interface ProdutoVitrine {
@@ -11,7 +21,6 @@ interface ProdutoVitrine {
   preco_delivery: number;
   alergenicos: string[];
   imagem_url?: string | null;
-  categoria_nome?: string;
 }
 
 const TAXAS_GOIANIA_10KM = [
@@ -23,44 +32,34 @@ const TAXAS_GOIANIA_10KM = [
 ];
 
 const FOTOS_POR_SKU: Record<string, string> = {
-  'SKU-001': 'https://images.unsplash.com/photo-1548907040-4baa42d10919?auto=format&fit=crop&w=800&q=80',
+  'SKU-001': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRSL7BvTG6zQS6HXBawmWvCx6vKoU0PgQWByVTgywOgEHhbiYK4nYF-5hgI&s=10',
   'SKU-002': 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&w=800&q=80',
   'SKU-003': 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=800&q=80',
-  'SKU-004': 'https://images.unsplash.com/photo-1607920591413-4ec007e70023?auto=format&fit=crop&w=800&q=80',
-  'SKU-005': 'https://images.unsplash.com/photo-1519915028121-7d3463d20b13?auto=format&fit=crop&w=800&q=80',
-  'SKU-006': 'https://images.unsplash.com/photo-1612203985729-70726954388c?auto=format&fit=crop&w=800&q=80',
+  'SKU-004': 'https://copra.com.br/wp-content/uploads/2021/07/IMG_3658-2-1.jpg',
+  'SKU-005': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQFKshFyKb8HqM4YBWbObM9OX-ADOf8TcQxha2G72xKzg&s=10',
+  'SKU-006': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTnVNlj49Q2wWa3OpoF5GGKBQ7e-bGhZph1CMH7RFQwaw&s=10',
   'SKU-007': 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=800&q=80',
-  'SKU-008': 'https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=800&q=80',
+  'SKU-008': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR0iAVhC4hMNte8lykxCiVDYs73dp_OUA90hrztqbGl2DoJ4aKG-PhRb7E&s=10',
   'SKU-009': 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=800&q=80',
   'SKU-010': 'https://images.unsplash.com/photo-1535141192574-5d4897c12636?auto=format&fit=crop&w=800&q=80',
   'SKU-011': 'https://images.unsplash.com/photo-1569864358642-9d1684040f43?auto=format&fit=crop&w=800&q=80',
-  'SKU-012': 'https://images.unsplash.com/photo-1586985289688-ca3cf47d3e6e?auto=format&fit=crop&w=800&q=80',
+  'SKU-012': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQgZCRimc2EQtr5DS3J99RE2aJzWGWYNew9r5FI3lbDmw&s=10',
   'SKU-013': 'https://images.unsplash.com/photo-1509365465985-25d11c17e812?auto=format&fit=crop&w=800&q=80',
-  'SKU-014': 'https://images.unsplash.com/photo-1528975604071-b4dc52a2d18c?auto=format&fit=crop&w=800&q=80',
-  'SKU-015': 'https://images.unsplash.com/photo-1519869325930-281384150729?auto=format&fit=crop&w=800&q=80',
-  'SKU-016': 'https://images.unsplash.com/photo-1562440499-64c9a111f713?auto=format&fit=crop&w=800&q=80',
-  'SKU-017': 'https://images.unsplash.com/photo-1551024601-bec78aea704b?auto=format&fit=crop&w=800&q=80',
+  'SKU-014': 'https://www.estadao.com.br/resizer/v2/ZCPBAHPOLFLLZELK5UWYAYR7DE.jpg?auth=5fcd6530019fb5ce32d54d6aa4bc39e3c33ec4870ec6ac9d00a37eaeda6b8215',
+  'SKU-015': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRcDYAfzhMIlXzH9KQATs4kNDX0TRFZlC9wPJxkOXll7i2H37e4VRtquyM&s=10',
+  'SKU-016': 'https://media.istockphoto.com/id/1408941134/pt/foto/tasty-mine-banoffee-pie-banoffee-tartlet.jpg?s=612x612&w=0&k=20&c=wqcXlCPX-IfZh3iDxXW4dNireJnbKT4r3g_IE2B2sK0=',
+  'SKU-017': 'https://assets.tmecosys.com/image/upload/t_web_rdp_recipe_584x480_1_5x/img/recipe/ras/Assets/9484c4a6eed08f7b1ff547ab7b37425f/Derivates/7d52d28874c2374d7bc0b1f4f9af502e12b43ca9.jpg',
   'SKU-018': 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?auto=format&fit=crop&w=800&q=80',
-  'SKU-019': 'https://images.unsplash.com/photo-1624371414361-e670edf4898d?auto=format&fit=crop&w=800&q=80',
-  'SKU-020': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80',
+  'SKU-019': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQOtNoEInCVE-uWxg5spjYgE59orBQW3Kfd2WrlYS1ILW-v_SJbf4tPvn4&s=10',
+  'SKU-020': 'https://docemaison.com.br/wp-content/uploads/2020/08/DM-229-scaled-e1698773164106.jpg',
   'SKU-021': 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?auto=format&fit=crop&w=800&q=80',
   'SKU-022': 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80',
   'SKU-023': 'https://images.unsplash.com/photo-1551030173-122aabc4489c?auto=format&fit=crop&w=800&q=80',
-  'SKU-024': 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?auto=format&fit=crop&w=800&q=80',
-  'SKU-025': 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80',
+  'SKU-024': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS3BqS3MzEeFCQL_DpCJP5t-F-5bhzRJF4uM6RaMKpReg&s=10',
+  'SKU-025': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTfaKgsllVvS47n-0e_Hh6b9xwI9DAGZWCQGiiH6QtEh96mkjYBGaIOTPts&s=10',
   'SKU-026': 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=800&q=80',
   'SKU-027': 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80',
   'SKU-028': 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=800&q=80',
-};
-
-const obterFotoProduto = (prod: ProdutoVitrine): string => {
-  if (prod.imagem_url && prod.imagem_url.trim().length > 10) {
-    return prod.imagem_url;
-  }
-  return (
-    FOTOS_POR_SKU[prod.codigo_sku] ||
-    'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80'
-  );
 };
 
 export const LojaDigitalPage: React.FC = () => {
@@ -70,6 +69,7 @@ export const LojaDigitalPage: React.FC = () => {
   const [regiaoEntrega, setRegiaoEntrega] = useState(TAXAS_GOIANIA_10KM[1]);
   const [tipoRecebimento, setTipoRecebimento] = useState<'entrega' | 'retirada'>('entrega');
   const [pedidoFinalizado, setPedidoFinalizado] = useState<string | null>(null);
+  const [imagensComErro, setImagensComErro] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function carregarVitrine() {
@@ -88,11 +88,20 @@ export const LojaDigitalPage: React.FC = () => {
     carregarVitrine();
   }, []);
 
+  const ehCafeteria = (sku: string) =>
+    sku.startsWith('SKU-02') && Number(sku.slice(-2)) >= 21;
+
   const produtosFiltrados = produtos.filter((p) => {
-    if (filtroCategoria === 'cafeteria') return p.codigo_sku.startsWith('SKU-02') && Number(p.codigo_sku.slice(-2)) >= 21;
-    if (filtroCategoria === 'confeitaria') return !(p.codigo_sku.startsWith('SKU-02') && Number(p.codigo_sku.slice(-2)) >= 21);
+    if (filtroCategoria === 'cafeteria') return ehCafeteria(p.codigo_sku);
+    if (filtroCategoria === 'confeitaria') return !ehCafeteria(p.codigo_sku);
     return true;
   });
+
+  const obterFoto = (prod: ProdutoVitrine): string | null => {
+    if (FOTOS_POR_SKU[prod.codigo_sku]) return FOTOS_POR_SKU[prod.codigo_sku];
+    if (prod.imagem_url && prod.imagem_url.trim().length > 5) return prod.imagem_url;
+    return null;
+  };
 
   const adicionarAoCarrinho = (produto: ProdutoVitrine) => {
     setCarrinho((prev) => {
@@ -145,7 +154,7 @@ export const LojaDigitalPage: React.FC = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-12 gap-8">
-        {/* Catálogo dos 28 SKUs com Fotos Exclusivas */}
+        {/* Catálogo dos 28 SKUs */}
         <div className="lg:col-span-8 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -172,53 +181,73 @@ export const LojaDigitalPage: React.FC = () => {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-5">
-            {produtosFiltrados.map((prod) => (
-              <div
-                key={prod.id}
-                className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden flex flex-col justify-between hover:border-[#C69A55] hover:shadow-md transition-all group"
-              >
-                <div>
-                  <div className="relative h-48 w-full overflow-hidden bg-[#F5E8D8]">
-                    <img
-                      src={obterFotoProduto(prod)}
-                      alt={prod.nome}
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80';
-                      }}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#542C20]/85 backdrop-blur-sm text-[#F5E8D8]">
-                      {prod.codigo_sku}
-                    </span>
-                    <span className="absolute bottom-3 right-3 font-serif text-base font-bold px-3 py-1 rounded-xl bg-white/95 text-[#701D2B] shadow-sm">
-                      {formatBRL(prod.preco_delivery)}
-                    </span>
-                  </div>
+            {produtosFiltrados.map((prod) => {
+              const fotoUrl = obterFoto(prod);
+              const exibirFoto = Boolean(fotoUrl) && !imagensComErro[prod.id];
 
-                  <div className="p-5 pb-2">
-                    <h3 className="font-serif text-xl font-bold text-[#542C20]">{prod.nome}</h3>
-                    <p className="text-xs text-[#7F7269] mt-1.5 leading-relaxed">{prod.descricao}</p>
-                    {prod.alergenicos && prod.alergenicos.length > 0 && (
-                      <p className="text-[10px] text-amber-800 mt-2.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/70 inline-block">
-                        Alergênicos: {prod.alergenicos.join(', ')}
-                      </p>
+              return (
+                <div
+                  key={prod.id}
+                  className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden flex flex-col justify-between hover:border-[#C69A55] hover:shadow-md transition-all group"
+                >
+                  <div>
+                    {exibirFoto ? (
+                      <div className="relative h-48 w-full overflow-hidden bg-[#F5E8D8]">
+                        <img
+                          src={fotoUrl!}
+                          alt={prod.nome}
+                          loading="lazy"
+                          onError={() =>
+                            setImagensComErro((prev) => ({ ...prev, [prod.id]: true }))
+                          }
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                        <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#542C20]/85 text-[#F5E8D8]">
+                          {prod.codigo_sku}
+                        </span>
+                        <span className="absolute bottom-3 right-3 font-serif text-base font-bold px-3 py-1 rounded-xl bg-white/95 text-[#701D2B] shadow-sm">
+                          {formatBRL(prod.preco_delivery)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="px-5 pt-5 pb-1 flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#F5E8D8] text-[#701D2B]">
+                          {ehCafeteria(prod.codigo_sku) ? (
+                            <Coffee className="w-3 h-3 text-[#C69A55]" />
+                          ) : (
+                            <CakeSlice className="w-3 h-3 text-[#C69A55]" />
+                          )}
+                          {prod.codigo_sku} • {ehCafeteria(prod.codigo_sku) ? 'Cafeteria' : 'Pâtisserie'}
+                        </span>
+                        <span className="font-serif text-xl font-bold text-[#701D2B]">
+                          {formatBRL(prod.preco_delivery)}
+                        </span>
+                      </div>
                     )}
+
+                    <div className="p-5 pt-3 pb-2">
+                      <h3 className="font-serif text-xl font-bold text-[#542C20]">{prod.nome}</h3>
+                      <p className="text-xs text-[#7F7269] mt-1.5 leading-relaxed">{prod.descricao}</p>
+                      {prod.alergenicos && prod.alergenicos.length > 0 && (
+                        <p className="text-[10px] text-amber-800 mt-2.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/70 inline-block">
+                          Alergênicos: {prod.alergenicos.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-5 pt-3">
+                    <button
+                      onClick={() => adicionarAoCarrinho(prod)}
+                      className="w-full py-2.5 rounded-xl bg-[#F5E8D8] hover:bg-[#701D2B] text-[#701D2B] hover:text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Adicionar ao Pedido
+                    </button>
                   </div>
                 </div>
-
-                <div className="p-5 pt-3">
-                  <button
-                    onClick={() => adicionarAoCarrinho(prod)}
-                    className="w-full py-2.5 rounded-xl bg-[#F5E8D8] hover:bg-[#701D2B] text-[#701D2B] hover:text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Adicionar ao Pedido
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -251,30 +280,35 @@ export const LojaDigitalPage: React.FC = () => {
               </p>
             ) : (
               <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                {carrinho.map(({ produto, qtd }) => (
-                  <div key={produto.id} className="flex items-center justify-between text-xs bg-[#FBF5EE] p-2.5 rounded-xl">
-                    <div className="flex items-center gap-2.5 pr-2">
-                      <img
-                        src={obterFotoProduto(produto)}
-                        alt={produto.nome}
-                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-[#E8D4BC]"
-                      />
-                      <div>
-                        <p className="font-semibold text-[#542C20]">{produto.nome}</p>
-                        <p className="text-[#7F7269]">{formatBRL(produto.preco_delivery * qtd)}</p>
+                {carrinho.map(({ produto, qtd }) => {
+                  const fotoMini = obterFoto(produto);
+                  return (
+                    <div key={produto.id} className="flex items-center justify-between text-xs bg-[#FBF5EE] p-2.5 rounded-xl">
+                      <div className="flex items-center gap-2.5 pr-2">
+                        {fotoMini && !imagensComErro[produto.id] && (
+                          <img
+                            src={fotoMini}
+                            alt={produto.nome}
+                            className="w-10 h-10 rounded-lg object-cover shrink-0 border border-[#E8D4BC]"
+                          />
+                        )}
+                        <div>
+                          <p className="font-semibold text-[#542C20]">{produto.nome}</p>
+                          <p className="text-[#7F7269]">{formatBRL(produto.preco_delivery * qtd)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => alterarQtd(produto.id, -1)} className="p-1 rounded bg-white border border-[#E8D4BC]">
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="font-bold w-4 text-center">{qtd}</span>
+                        <button onClick={() => alterarQtd(produto.id, 1)} className="p-1 rounded bg-white border border-[#E8D4BC]">
+                          <Plus className="w-3 h-3" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => alterarQtd(produto.id, -1)} className="p-1 rounded bg-white border border-[#E8D4BC]">
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="font-bold w-4 text-center">{qtd}</span>
-                      <button onClick={() => alterarQtd(produto.id, 1)} className="p-1 rounded bg-white border border-[#E8D4BC]">
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
