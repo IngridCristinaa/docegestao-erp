@@ -10,6 +10,7 @@ interface ProdutoVitrine {
   descricao: string;
   preco_delivery: number;
   alergenicos: string[];
+  imagem_url?: string | null;
   categoria_nome?: string;
 }
 
@@ -20,6 +21,35 @@ const TAXAS_GOIANIA_10KM = [
   { bairro: 'Jardim Goiás / Flamboyant (Até 8 km)', distancia: 7.6, taxa: 15.0 },
   { bairro: 'Setor Jaó / Alto da Glória (Até 10 km)', distancia: 9.8, taxa: 18.0 },
 ];
+
+const obterFotoFallback = (nome: string): string => {
+  const n = nome.toLowerCase();
+  if (n.includes('croissant') || n.includes('folhado') || n.includes('pain au')) {
+    return 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('macaron')) {
+    return 'https://images.unsplash.com/photo-1569864358642-9d1684040f43?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('entremet') || n.includes('frutas vermelhas') || n.includes('framboesa')) {
+    return 'https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('opera') || n.includes('ópera') || n.includes('chocolate') || n.includes('cacau') || n.includes('brownie')) {
+    return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('torta') || n.includes('cheesecake') || n.includes('limao') || n.includes('limão')) {
+    return 'https://images.unsplash.com/photo-1519915028121-7d3463d20b13?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('eclair') || n.includes('éclair') || n.includes('profiterole') || n.includes('mil-folhas')) {
+    return 'https://images.unsplash.com/photo-1612203985729-70726954388c?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('cafe') || n.includes('café') || n.includes('cappuccino') || n.includes('latte') || n.includes('espresso')) {
+    return 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80';
+  }
+  if (n.includes('cha') || n.includes('chá') || n.includes('soda') || n.includes('suco')) {
+    return 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=800&q=80';
+  }
+  return 'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80';
+};
 
 export const LojaDigitalPage: React.FC = () => {
   const [produtos, setProdutos] = useState<ProdutoVitrine[]>([]);
@@ -34,7 +64,7 @@ export const LojaDigitalPage: React.FC = () => {
       if (!isSupabaseConfigured) return;
       const { data } = await supabase
         .from('produtos')
-        .select('id, codigo_sku, nome, descricao, preco_delivery, alergenicos')
+        .select('id, codigo_sku, nome, descricao, preco_delivery, alergenicos, imagem_url')
         .eq('ativo', true)
         .eq('visivel_loja_digital', true)
         .order('codigo_sku', { ascending: true });
@@ -103,7 +133,7 @@ export const LojaDigitalPage: React.FC = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-12 gap-8">
-        {/* Catálogo dos 28 SKUs */}
+        {/* Catálogo dos 28 SKUs com Fotos */}
         <div className="lg:col-span-8 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -129,37 +159,53 @@ export const LojaDigitalPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 gap-5">
             {produtosFiltrados.map((prod) => (
               <div
                 key={prod.id}
-                className="bg-white p-5 rounded-2xl border border-[#E8D4BC] flex flex-col justify-between hover:border-[#C69A55] transition-all"
+                className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden flex flex-col justify-between hover:border-[#C69A55] hover:shadow-md transition-all group"
               >
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#F5E8D8] text-[#701D2B]">
+                  {/* Foto do Produto */}
+                  <div className="relative h-48 w-full overflow-hidden bg-[#F5E8D8]">
+                    <img
+                      src={prod.imagem_url || obterFotoFallback(prod.nome)}
+                      alt={prod.nome}
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = obterFotoFallback(prod.nome);
+                      }}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#542C20]/85 backdrop-blur-sm text-[#F5E8D8]">
                       {prod.codigo_sku}
                     </span>
-                    <span className="font-serif text-xl font-bold text-[#701D2B]">
+                    <span className="absolute bottom-3 right-3 font-serif text-base font-bold px-3 py-1 rounded-xl bg-white/95 text-[#701D2B] shadow-sm">
                       {formatBRL(prod.preco_delivery)}
                     </span>
                   </div>
-                  <h3 className="font-serif text-xl font-bold mt-2 text-[#542C20]">{prod.nome}</h3>
-                  <p className="text-xs text-[#7F7269] mt-1 leading-relaxed">{prod.descricao}</p>
-                  {prod.alergenicos && prod.alergenicos.length > 0 && (
-                    <p className="text-[10px] text-amber-800 mt-2">
-                      Alergênicos: {prod.alergenicos.join(', ')}
-                    </p>
-                  )}
+
+                  {/* Informações do Produto */}
+                  <div className="p-5 pb-2">
+                    <h3 className="font-serif text-xl font-bold text-[#542C20]">{prod.nome}</h3>
+                    <p className="text-xs text-[#7F7269] mt-1.5 leading-relaxed">{prod.descricao}</p>
+                    {prod.alergenicos && prod.alergenicos.length > 0 && (
+                      <p className="text-[10px] text-amber-800 mt-2.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/70 inline-block">
+                        Alergênicos: {prod.alergenicos.join(', ')}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                <button
-                  onClick={() => adicionarAoCarrinho(prod)}
-                  className="mt-4 w-full py-2 rounded-xl bg-[#F5E8D8] hover:bg-[#701D2B] text-[#701D2B] hover:text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Adicionar ao Pedido
-                </button>
+                <div className="p-5 pt-3">
+                  <button
+                    onClick={() => adicionarAoCarrinho(prod)}
+                    className="w-full py-2.5 rounded-xl bg-[#F5E8D8] hover:bg-[#701D2B] text-[#701D2B] hover:text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Adicionar ao Pedido
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -196,11 +242,18 @@ export const LojaDigitalPage: React.FC = () => {
               <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
                 {carrinho.map(({ produto, qtd }) => (
                   <div key={produto.id} className="flex items-center justify-between text-xs bg-[#FBF5EE] p-2.5 rounded-xl">
-                    <div className="pr-2">
-                      <p className="font-semibold text-[#542C20]">{produto.nome}</p>
-                      <p className="text-[#7F7269]">{formatBRL(produto.preco_delivery * qtd)}</p>
+                    <div className="flex items-center gap-2.5 pr-2">
+                      <img
+                        src={produto.imagem_url || obterFotoFallback(produto.nome)}
+                        alt={produto.nome}
+                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-[#E8D4BC]"
+                      />
+                      <div>
+                        <p className="font-semibold text-[#542C20]">{produto.nome}</p>
+                        <p className="text-[#7F7269]">{formatBRL(produto.preco_delivery * qtd)}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button onClick={() => alterarQtd(produto.id, -1)} className="p-1 rounded bg-white border border-[#E8D4BC]">
                         <Minus className="w-3 h-3" />
                       </button>
@@ -288,3 +341,5 @@ export const LojaDigitalPage: React.FC = () => {
     </div>
   );
 };
+
+export default LojaDigitalPage;
