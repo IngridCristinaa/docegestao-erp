@@ -22,33 +22,45 @@ const TAXAS_GOIANIA_10KM = [
   { bairro: 'Setor Jaó / Alto da Glória (Até 10 km)', distancia: 9.8, taxa: 18.0 },
 ];
 
-const obterFotoFallback = (nome: string): string => {
-  const n = nome.toLowerCase();
-  if (n.includes('croissant') || n.includes('folhado') || n.includes('pain au')) {
-    return 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80';
+const FOTOS_POR_SKU: Record<string, string> = {
+  'SKU-001': 'https://images.unsplash.com/photo-1548907040-4baa42d10919?auto=format&fit=crop&w=800&q=80',
+  'SKU-002': 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&w=800&q=80',
+  'SKU-003': 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=800&q=80',
+  'SKU-004': 'https://images.unsplash.com/photo-1607920591413-4ec007e70023?auto=format&fit=crop&w=800&q=80',
+  'SKU-005': 'https://images.unsplash.com/photo-1519915028121-7d3463d20b13?auto=format&fit=crop&w=800&q=80',
+  'SKU-006': 'https://images.unsplash.com/photo-1612203985729-70726954388c?auto=format&fit=crop&w=800&q=80',
+  'SKU-007': 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=800&q=80',
+  'SKU-008': 'https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=800&q=80',
+  'SKU-009': 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=800&q=80',
+  'SKU-010': 'https://images.unsplash.com/photo-1535141192574-5d4897c12636?auto=format&fit=crop&w=800&q=80',
+  'SKU-011': 'https://images.unsplash.com/photo-1569864358642-9d1684040f43?auto=format&fit=crop&w=800&q=80',
+  'SKU-012': 'https://images.unsplash.com/photo-1586985289688-ca3cf47d3e6e?auto=format&fit=crop&w=800&q=80',
+  'SKU-013': 'https://images.unsplash.com/photo-1509365465985-25d11c17e812?auto=format&fit=crop&w=800&q=80',
+  'SKU-014': 'https://images.unsplash.com/photo-1528975604071-b4dc52a2d18c?auto=format&fit=crop&w=800&q=80',
+  'SKU-015': 'https://images.unsplash.com/photo-1519869325930-281384150729?auto=format&fit=crop&w=800&q=80',
+  'SKU-016': 'https://images.unsplash.com/photo-1562440499-64c9a111f713?auto=format&fit=crop&w=800&q=80',
+  'SKU-017': 'https://images.unsplash.com/photo-1551024601-bec78aea704b?auto=format&fit=crop&w=800&q=80',
+  'SKU-018': 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?auto=format&fit=crop&w=800&q=80',
+  'SKU-019': 'https://images.unsplash.com/photo-1624371414361-e670edf4898d?auto=format&fit=crop&w=800&q=80',
+  'SKU-020': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80',
+  'SKU-021': 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?auto=format&fit=crop&w=800&q=80',
+  'SKU-022': 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80',
+  'SKU-023': 'https://images.unsplash.com/photo-1551030173-122aabc4489c?auto=format&fit=crop&w=800&q=80',
+  'SKU-024': 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?auto=format&fit=crop&w=800&q=80',
+  'SKU-025': 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80',
+  'SKU-026': 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=800&q=80',
+  'SKU-027': 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80',
+  'SKU-028': 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=800&q=80',
+};
+
+const obterFotoProduto = (prod: ProdutoVitrine): string => {
+  if (prod.imagem_url && prod.imagem_url.trim().length > 10) {
+    return prod.imagem_url;
   }
-  if (n.includes('macaron')) {
-    return 'https://images.unsplash.com/photo-1569864358642-9d1684040f43?auto=format&fit=crop&w=800&q=80';
-  }
-  if (n.includes('entremet') || n.includes('frutas vermelhas') || n.includes('framboesa')) {
-    return 'https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=800&q=80';
-  }
-  if (n.includes('opera') || n.includes('ópera') || n.includes('chocolate') || n.includes('cacau') || n.includes('brownie')) {
-    return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=800&q=80';
-  }
-  if (n.includes('torta') || n.includes('cheesecake') || n.includes('limao') || n.includes('limão')) {
-    return 'https://images.unsplash.com/photo-1519915028121-7d3463d20b13?auto=format&fit=crop&w=800&q=80';
-  }
-  if (n.includes('eclair') || n.includes('éclair') || n.includes('profiterole') || n.includes('mil-folhas')) {
-    return 'https://images.unsplash.com/photo-1612203985729-70726954388c?auto=format&fit=crop&w=800&q=80';
-  }
-  if (n.includes('cafe') || n.includes('café') || n.includes('cappuccino') || n.includes('latte') || n.includes('espresso')) {
-    return 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80';
-  }
-  if (n.includes('cha') || n.includes('chá') || n.includes('soda') || n.includes('suco')) {
-    return 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=800&q=80';
-  }
-  return 'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80';
+  return (
+    FOTOS_POR_SKU[prod.codigo_sku] ||
+    'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80'
+  );
 };
 
 export const LojaDigitalPage: React.FC = () => {
@@ -133,7 +145,7 @@ export const LojaDigitalPage: React.FC = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-12 gap-8">
-        {/* Catálogo dos 28 SKUs com Fotos */}
+        {/* Catálogo dos 28 SKUs com Fotos Exclusivas */}
         <div className="lg:col-span-8 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -166,14 +178,14 @@ export const LojaDigitalPage: React.FC = () => {
                 className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden flex flex-col justify-between hover:border-[#C69A55] hover:shadow-md transition-all group"
               >
                 <div>
-                  {/* Foto do Produto */}
                   <div className="relative h-48 w-full overflow-hidden bg-[#F5E8D8]">
                     <img
-                      src={prod.imagem_url || obterFotoFallback(prod.nome)}
+                      src={obterFotoProduto(prod)}
                       alt={prod.nome}
                       loading="lazy"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = obterFotoFallback(prod.nome);
+                        (e.currentTarget as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=800&q=80';
                       }}
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
@@ -185,7 +197,6 @@ export const LojaDigitalPage: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Informações do Produto */}
                   <div className="p-5 pb-2">
                     <h3 className="font-serif text-xl font-bold text-[#542C20]">{prod.nome}</h3>
                     <p className="text-xs text-[#7F7269] mt-1.5 leading-relaxed">{prod.descricao}</p>
@@ -244,7 +255,7 @@ export const LojaDigitalPage: React.FC = () => {
                   <div key={produto.id} className="flex items-center justify-between text-xs bg-[#FBF5EE] p-2.5 rounded-xl">
                     <div className="flex items-center gap-2.5 pr-2">
                       <img
-                        src={produto.imagem_url || obterFotoFallback(produto.nome)}
+                        src={obterFotoProduto(produto)}
                         alt={produto.nome}
                         className="w-10 h-10 rounded-lg object-cover shrink-0 border border-[#E8D4BC]"
                       />
@@ -267,7 +278,6 @@ export const LojaDigitalPage: React.FC = () => {
               </div>
             )}
 
-            {/* Opção Entrega (até 10 km) vs Retirada */}
             <div className="border-t border-[#E8D4BC] pt-3 space-y-2.5 text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <button
