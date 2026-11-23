@@ -1,434 +1,596 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Search, ShieldAlert, CheckCircle2, Info } from 'lucide-react';
-import { supabase, formatBRL, formatDateBR, isSupabaseConfigured } from '../../lib/supabase';
+import {
+  Package,
+  Truck,
+  Wallet,
+  Receipt,
+  Wrench,
+  ShieldAlert,
+  CheckCircle2,
+  Plus,
+  X,
+  ArrowUpRight,
+  ArrowDownRight,
+} from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { ModuloHeader } from '../../components/shared/ModuloHeader';
-
-interface ConfigModulo {
-  categoria: string;
-  titulo: string;
-  descricao: string;
-  tabelaPrincipal: string;
-  selectQuery: string;
-  cardsResumo: { label: string; valor: string; detalhe: string }[];
-  colunas: { chave: string; titulo: string; formato?: 'moeda' | 'data' | 'badge' }[];
-}
-
-const CONFIG_MODULOS: Record<string, ConfigModulo> = {
-  'fichas-tecnicas': {
-    categoria: 'Módulo 5.8 • Engenharia de Cardápio',
-    titulo: 'Fichas Técnicas & Receitas (28 SKUs)',
-    descricao: 'Custos unitários, rendimento, fator de perda, alergênicos e precificação por canal.',
-    tabelaPrincipal: 'produtos',
-    selectQuery: 'codigo_sku, nome, tipo_produto, custo_unitario_atual, preco_salao_balcao, preco_delivery, validade_dias',
-    cardsResumo: [
-      { label: 'Portfólio Ativo', valor: '28 SKUs', detalhe: '20 Confeitaria + 8 Cafeteria' },
-      { label: 'Margem Bruta Média', valor: '69,4%', detalhe: 'Calculada sobre custo ficha' },
-      { label: 'Versionamento', valor: '100% Auditado', detalhe: 'Histórico imutável de revisões' },
-    ],
-    colunas: [
-      { chave: 'codigo_sku', titulo: 'SKU', formato: 'badge' },
-      { chave: 'nome', titulo: 'Produto' },
-      { chave: 'custo_unitario_atual', titulo: 'Custo Ficha', formato: 'moeda' },
-      { chave: 'preco_salao_balcao', titulo: 'Preço Salão', formato: 'moeda' },
-      { chave: 'preco_delivery', titulo: 'Preço Delivery', formato: 'moeda' },
-      { chave: 'validade_dias', titulo: 'Validade (dias)' },
-    ],
-  },
-  estoque: {
-    categoria: 'Módulo 5.5 • Almoxarifado & Rastreabilidade',
-    titulo: 'Estoque, Lotes, Endereçamento & FEFO',
-    descricao: 'Controle rigoroso de validades (First-Expire, First-Out), quarentena e endereços como REF-CAM-02-03.',
-    tabelaPrincipal: 'estoque_lotes',
-    selectQuery: 'codigo_lote, data_fabricacao, data_validade, quantidade_atual, custo_unitario, status, ingredientes(nome), enderecos_estoque(codigo_endereco)',
-    cardsResumo: [
-      { label: 'Câmara Fria 02', valor: '2,8 °C', detalhe: 'Dentro da faixa (1°C a 4°C)' },
-      { label: 'Política de Expedição', valor: 'FEFO Ativo', detalhe: 'Menor validade sai primeiro' },
-      { label: 'Ponto de Reposição', valor: '1 Alerta', detalhe: 'Farinha de Amêndoas (7,5 kg)' },
-    ],
-    colunas: [
-      { chave: 'codigo_lote', titulo: 'Lote', formato: 'badge' },
-      { chave: 'ingrediente_nome', titulo: 'Matéria-Prima' },
-      { chave: 'endereco_codigo', titulo: 'Endereço Físico' },
-      { chave: 'quantidade_atual', titulo: 'Saldo Atual' },
-      { chave: 'data_validade', titulo: 'Validade FEFO', formato: 'data' },
-      { chave: 'status', titulo: 'Status', formato: 'badge' },
-    ],
-  },
-  compras: {
-    categoria: 'Módulo 5.6 & 5.16 • Suprimentos & Fornecedores',
-    titulo: 'Compras, Cotações & Ranking de Fornecedores',
-    descricao: 'Homologação, avaliação multicritério e pedidos de compra com aprovação humana obrigatória.',
-    tabelaPrincipal: 'vw_ranking_fornecedores',
-    selectQuery: 'codigo, nome_fantasia, categoria_fornecimento, media_qualidade, media_pontualidade, score_geral, status',
-    cardsResumo: [
-      { label: 'Fornecedores Ativos', valor: '4 Homologados', detalhe: 'Score médio: 4,80 / 5,00' },
-      { label: 'Compras Autônomas', valor: 'Bloqueadas', detalhe: 'Exige aprovação humana' },
-      { label: 'Pedido Vigente', valor: 'PC-2026-014', detalhe: 'R$ 2.740,00 (Maison Chocolat)' },
-    ],
-    colunas: [
-      { chave: 'codigo', titulo: 'Código', formato: 'badge' },
-      { chave: 'nome_fantasia', titulo: 'Fornecedor' },
-      { chave: 'categoria_fornecimento', titulo: 'Categoria' },
-      { chave: 'media_qualidade', titulo: 'Qualidade' },
-      { chave: 'score_geral', titulo: 'Score Geral' },
-      { chave: 'status', titulo: 'Status', formato: 'badge' },
-    ],
-  },
-  producao: {
-    categoria: 'Módulo 5.7 • Planejamento e Controle da Produção (PCP)',
-    titulo: 'Ordens de Produção, MRP, CRP & Perdas',
-    descricao: 'Programação diária a partir das 06h, consumo por lote FEFO e análise de capacidade.',
-    tabelaPrincipal: 'ordens_producao',
-    selectQuery: 'codigo, data_programada, hora_inicio_prevista, quantidade_planejada, quantidade_produzida, status, produtos(nome)',
-    cardsResumo: [
-      { label: 'Início Produção', valor: '06:00h', detalhe: 'Turno matinal de confeitaria' },
-      { label: 'Rendimento OP-089', valor: '98,3%', detalhe: '60 Éclairs produzidos' },
-      { label: 'Autonomia PCP', valor: 'Híbrida', detalhe: 'Sugestão MRP + aprovação Chef' },
-    ],
-    colunas: [
-      { chave: 'codigo', titulo: 'Ordem (OP)', formato: 'badge' },
-      { chave: 'produto_nome', titulo: 'Produto' },
-      { chave: 'data_programada', titulo: 'Data', formato: 'data' },
-      { chave: 'quantidade_planejada', titulo: 'Planejado' },
-      { chave: 'quantidade_produzida', titulo: 'Produzido' },
-      { chave: 'status', titulo: 'Status', formato: 'badge' },
-    ],
-  },
-  financeiro: {
-    categoria: 'Módulo 5.4 • Financeiro & Controladoria',
-    titulo: 'Contas, Fluxo de Caixa, DRE & Capital Inicial',
-    descricao: 'Regime Lucro Presumido (11,33%), estrutura de investimento de R$ 1.270.000,00 e lançamentos gerenciais.',
-    tabelaPrincipal: 'lancamentos_financeiros',
-    selectQuery: 'data_competencia, tipo, descricao, valor_bruto, valor_taxas, valor_liquido, status',
-    cardsResumo: [
-      { label: 'Investimento Inicial', valor: 'R$ 1.270.000,00', detalhe: '40% Sócios • 35% Banco • 25% Inv.' },
-      { label: 'Regime Tributário', valor: 'Lucro Presumido', detalhe: 'Alíquota simulada: 11,33%' },
-      { label: 'Saldo Disponível', valor: 'R$ 347.100,00', detalhe: 'Conta Corrente + Cofre Matriz' },
-    ],
-    colunas: [
-      { chave: 'data_competencia', titulo: 'Competência', formato: 'data' },
-      { chave: 'tipo', titulo: 'Natureza', formato: 'badge' },
-      { chave: 'descricao', titulo: 'Histórico / Conta' },
-      { chave: 'valor_bruto', titulo: 'Valor Bruto', formato: 'moeda' },
-      { chave: 'valor_liquido', titulo: 'Valor Líquido', formato: 'moeda' },
-      { chave: 'status', titulo: 'Situação', formato: 'badge' },
-    ],
-  },
-  patrimonio: {
-    categoria: 'Módulo 5.11 • Gestão Patrimonial & Ativos',
-    titulo: 'Ativos Imobilizados, QR Code & Depreciação Linear',
-    descricao: 'Controle individual por QR Code e cálculo automático de depreciação mensal (aprovação exclusiva da Diretoria).',
-    tabelaPrincipal: 'vw_patrimonio_depreciacao',
-    selectQuery: 'codigo_patrimonio, qr_code_hash, nome, localizacao_setor, valor_aquisicao, depreciacao_mensal, valor_contabil_liquido, status',
-    cardsResumo: [
-      { label: 'Valor Aquisição Total', valor: 'R$ 156.300,00', detalhe: '4 equipamentos principais' },
-      { label: 'Depreciação Mensal', valor: 'R$ 1.196,25', detalhe: 'Método linear sobre vida útil' },
-      { label: 'Alçada de Baixa', valor: 'Exclusiva Diretor', detalhe: 'Protegida via política RLS' },
-    ],
-    colunas: [
-      { chave: 'codigo_patrimonio', titulo: 'Tombamento', formato: 'badge' },
-      { chave: 'nome', titulo: 'Bem Patrimonial' },
-      { chave: 'localizacao_setor', titulo: 'Setor' },
-      { chave: 'valor_aquisicao', titulo: 'Aquisição', formato: 'moeda' },
-      { chave: 'depreciacao_mensal', titulo: 'Depr./Mês', formato: 'moeda' },
-      { chave: 'valor_contabil_liquido', titulo: 'Valor Líquido', formato: 'moeda' },
-    ],
-  },
-  manutencao: {
-    categoria: 'Módulo 5.10 • Manutenção & Confiabilidade',
-    titulo: 'Ordens de Serviço, SLA, MTBF & MTTR',
-    descricao: 'Gestão de preventivas e corretivas terceirizadas com indicadores de disponibilidade.',
-    tabelaPrincipal: 'vw_manutencao_indicadores',
-    selectQuery: 'codigo_patrimonio, equipamento_nome, total_os, total_corretivas, custo_manutencao_acumulado, mtbf_horas_estimado',
-    cardsResumo: [
-      { label: 'SLA Crítico', valor: '6 horas', detalhe: 'Fornos, espresso e câmaras frias' },
-      { label: 'OS Aberta', valor: 'OS-2026-002', detalhe: 'Aferição sonda Forno Combinado' },
-      { label: 'Contratação', valor: 'Avulsa por OS', detalhe: 'Prestador homologado RefriTech' },
-    ],
-    colunas: [
-      { chave: 'codigo_patrimonio', titulo: 'Ativo', formato: 'badge' },
-      { chave: 'equipamento_nome', titulo: 'Equipamento' },
-      { chave: 'total_os', titulo: 'Total OS' },
-      { chave: 'total_corretivas', titulo: 'Corretivas' },
-      { chave: 'custo_manutencao_acumulado', titulo: 'Custo Acum.', formato: 'moeda' },
-      { chave: 'mtbf_horas_estimado', titulo: 'MTBF Est. (h)' },
-    ],
-  },
-  rh: {
-    categoria: 'Módulo 5.12 • Recursos Humanos & Departamento Pessoal',
-    titulo: 'Colaboradores, Escalas, Ponto Híbrido & Folha Prévia',
-    descricao: 'Gestão de equipe da unidade Goiânia, treinamento obrigatório LGPD na admissão e folha gerencial.',
-    tabelaPrincipal: 'funcionarios',
-    selectQuery: 'matricula, nome_completo, turno_padrao, salario_atual, treinamento_lgpd_concluido, status, cargos(nome)',
-    cardsResumo: [
-      { label: 'Quadro Ativo', valor: '5 Colaboradores', detalhe: 'Turnos das 06h às 20h' },
-      { label: 'Conformidade LGPD', valor: '100% Treinados', detalhe: 'Capacitação na admissão' },
-      { label: 'Ponto & Folha', valor: 'Híbrido + Prévia', detalhe: 'Validação externa conceitual' },
-    ],
-    colunas: [
-      { chave: 'matricula', titulo: 'Matrícula', formato: 'badge' },
-      { chave: 'nome_completo', titulo: 'Colaborador' },
-      { chave: 'cargo_nome', titulo: 'Cargo' },
-      { chave: 'turno_padrao', titulo: 'Turno' },
-      { chave: 'salario_atual', titulo: 'Salário Base', formato: 'moeda' },
-      { chave: 'status', titulo: 'Status', formato: 'badge' },
-    ],
-  },
-  crm: {
-    categoria: 'Módulo 5.13 & 5.15 • CRM, Fidelização & Atendimento SAC',
-    titulo: 'Base de Clientes, Segmentação & Pesquisa de Satisfação',
-    descricao: 'Relacionamento sem carteira de pontos, campanhas direcionadas e avaliação 1 a 5 estrelas.',
-    tabelaPrincipal: 'vw_crm_rfm_clientes',
-    selectQuery: 'codigo, nome, tipo_pessoa, segmento, frequencia_pedidos, ticket_medio, valor_total_gasto',
-    cardsResumo: [
-      { label: 'Satisfação Média', valor: '5,0 / 5,0 ★', detalhe: 'Avaliações Salão e Delivery' },
-      { label: 'Modelo Fidelidade', valor: 'Benefícios Diretos', detalhe: 'Sem programa de pontos' },
-      { label: 'Campanha Ativa', valor: 'CRM-2026-01', detalhe: 'Mimo Aniversariante (34,5% conv.)' },
-    ],
-    colunas: [
-      { chave: 'codigo', titulo: 'Código', formato: 'badge' },
-      { chave: 'nome', titulo: 'Cliente' },
-      { chave: 'tipo_pessoa', titulo: 'Tipo' },
-      { chave: 'segmento', titulo: 'Segmento', formato: 'badge' },
-      { chave: 'frequencia_pedidos', titulo: 'Pedidos' },
-      { chave: 'valor_total_gasto', titulo: 'Total Comprado', formato: 'moeda' },
-    ],
-  },
-  qualidade: {
-    categoria: 'Módulo 5.9 • Qualidade & Segurança dos Alimentos (BPF)',
-    titulo: 'POPs, Inspeções 100% Lotes, Temperatura & Não Conformidades',
-    descricao: 'Controles críticos em 100% dos lotes e bloqueio automático via trigger em caso de desvio.',
-    tabelaPrincipal: 'inspecoes_qualidade',
-    selectQuery: 'codigo, data_inspecao, resultado, observacoes, checklists_modelos(nome)',
-    cardsResumo: [
-      { label: 'Controle Crítico', valor: '100% dos Lotes', detalhe: 'Liberação com aprovação humana' },
-      { label: 'POPs Vigentes', valor: 'POP-001 e 002', detalhe: 'BPF e Cadeia Fria/Alergênicos' },
-      { label: 'Bloqueio Automático', valor: 'Trigger Ativo', detalhe: 'Impede venda de lote reprovado' },
-    ],
-    colunas: [
-      { chave: 'codigo', titulo: 'Inspeção', formato: 'badge' },
-      { chave: 'checklist_nome', titulo: 'Checklist Aplicado' },
-      { chave: 'data_inspecao', titulo: 'Data/Hora', formato: 'data' },
-      { chave: 'resultado', titulo: 'Resultado', formato: 'badge' },
-    ],
-  },
-  bpm: {
-    categoria: 'Módulo 5.18 • Projetos, Kanban, Gantt & Processos BPM',
-    titulo: 'Gestão de Projetos & Automação de Fluxos BPM',
-    descricao: 'Acompanhamento de tarefas e instâncias de processos empresariais simulados.',
-    tabelaPrincipal: 'tarefas',
-    selectQuery: 'titulo, coluna_kanban, prioridade, data_inicio, prazo, projetos(nome)',
-    cardsResumo: [
-      { label: 'Projeto Ativo', valor: 'PRJ-001 (45%)', detalhe: 'Linha Páscoa & Corporativo 2027' },
-      { label: 'Fluxo BPM Ativo', valor: 'INST-BPM-044', detalhe: 'Aprovação Compras -> FEFO' },
-      { label: 'Visões Disponíveis', valor: 'Kanban & Gantt', detalhe: 'Dependências e SLAs' },
-    ],
-    colunas: [
-      { chave: 'projeto_nome', titulo: 'Projeto' },
-      { chave: 'titulo', titulo: 'Tarefa' },
-      { chave: 'coluna_kanban', titulo: 'Etapa Kanban', formato: 'badge' },
-      { chave: 'prioridade', titulo: 'Prioridade', formato: 'badge' },
-      { chave: 'prazo', titulo: 'Prazo', formato: 'data' },
-    ],
-  },
-  documentos: {
-    categoria: 'Módulo 5.19 • Gestão Eletrônica de Documentos (GED)',
-    titulo: 'Repositório Central, Versionamento & Controle de Sigilo',
-    descricao: 'Classificação por nível de acesso (Público, Interno, Confidencial, Restrito) e assinatura eletrônica simulada.',
-    tabelaPrincipal: 'documentos_ged',
-    selectQuery: 'codigo, titulo, categoria, nivel_sigilo, data_validade, assinado_eletronicamente, status',
-    cardsResumo: [
-      { label: 'Armazenamento', valor: 'Supabase Storage', detalhe: 'Buckets segregados por sigilo' },
-      { label: 'Alvará Sanitário', valor: 'Vigente', detalhe: 'Vencimento monitorado (DOC-001)' },
-      { label: 'Política RLS', valor: 'Sigilo Aplicado', detalhe: 'Restritos visíveis só à Diretoria' },
-    ],
-    colunas: [
-      { chave: 'codigo', titulo: 'Código', formato: 'badge' },
-      { chave: 'titulo', titulo: 'Documento' },
-      { chave: 'categoria', titulo: 'Categoria' },
-      { chave: 'nivel_sigilo', titulo: 'Classificação', formato: 'badge' },
-      { chave: 'data_validade', titulo: 'Validade', formato: 'data' },
-      { chave: 'status', titulo: 'Status', formato: 'badge' },
-    ],
-  },
-  seguranca: {
-    categoria: 'Módulo 5.21 • Segurança da Informação & Auditoria',
-    titulo: 'Trilha Imutável de Auditoria, Perfis & Anomalias',
-    descricao: 'Registro automático (via triggers) de todas as inserções, alterações e exclusões em tabelas críticas.',
-    tabelaPrincipal: 'auditoria_logs',
-    selectQuery: 'created_at, tabela_nome, operacao, registro_id',
-    cardsResumo: [
-      { label: 'Integridade Logs', valor: '100% Imutável', detalhe: 'UPDATE/DELETE bloqueados via RLS' },
-      { label: 'Proteção RLS', valor: '82/82 Tabelas', detalhe: 'Controle granular por perfil' },
-      { label: 'Anomalias', valor: 'Investigação Humana', detalhe: 'Sem bloqueio automático cego' },
-    ],
-    colunas: [
-      { chave: 'created_at', titulo: 'Data/Hora', formato: 'data' },
-      { chave: 'tabela_nome', titulo: 'Tabela Auditada', formato: 'badge' },
-      { chave: 'operacao', titulo: 'Operação', formato: 'badge' },
-      { chave: 'registro_id', titulo: 'ID do Registro' },
-    ],
-  },
-  lgpd: {
-    categoria: 'Módulo 5.22 & 5.23 • Governança LGPD & Continuidade (Backup)',
-    titulo: 'Inventário ROPA, Privacidade & Plano de Recuperação (DR)',
-    descricao: 'Adequação à Lei 13.709/2018 e painel demonstrativo de backups com RPO <= 1h e RTO <= 4h.',
-    tabelaPrincipal: 'lgpd_inventario_dados',
-    selectQuery: 'codigo, processo_negocio, categoria_titular, base_legal, prazo_retencao, transferencia_internacional',
-    cardsResumo: [
-      { label: 'RPO / RTO Alvo', valor: '35min / 140min', detalhe: 'Dentro da meta (1h / 4h)' },
-      { label: 'Retenção Backup', valor: '30d / 12m / 5a', detalhe: 'Diária, Mensal e Anual' },
-      { label: 'Cookies Vitrine', valor: 'Granular', detalhe: 'Rejeição não-essenciais ativa' },
-    ],
-    colunas: [
-      { chave: 'codigo', titulo: 'ROPA', formato: 'badge' },
-      { chave: 'processo_negocio', titulo: 'Processo de Negócio' },
-      { chave: 'categoria_titular', titulo: 'Titular' },
-      { chave: 'base_legal', titulo: 'Base Legal LGPD' },
-      { chave: 'prazo_retencao', titulo: 'Retenção' },
-    ],
-  },
-};
+import { useAuth } from '../../contexts/AuthContext';
 
 export const ModuloCorporativoUnificadoPage: React.FC = () => {
-  const { modulo } = useParams<{ modulo: string }>();
-  const config = CONFIG_MODULOS[modulo || 'fichas-tecnicas'] || CONFIG_MODULOS['fichas-tecnicas'];
+  const { modulo = 'suprimentos' } = useParams<{ modulo: string }>();
+  const { podeEditar } = useAuth();
 
-  const [registros, setRegistros] = useState<any[]>([]);
-  const [filtroTexto, setFiltroTexto] = useState('');
-  const [carregando, setCarregando] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  // Estados de dados reais
+  const [fornecedores, setFornecedores] = useState<any[]>([]);
+  const [pedidosCompra, setPedidosCompra] = useState<any[]>([]);
+  const [lotes, setLotes] = useState<any[]>([]);
+  const [movimentacoes, setMovimentacoes] = useState<any[]>([]);
+  const [contasBancarias, setContasBancarias] = useState<any[]>([]);
+  const [pedidosVenda, setPedidosVenda] = useState<any[]>([]);
+  const [ordensManutencao, setOrdensManutencao] = useState<any[]>([]);
+  const [inventarioLgpd, setInventarioLgpd] = useState<any[]>([]);
+  const [auditoriaLogs, setAuditoriaLogs] = useState<any[]>([]);
+
+  // Modal Nova OS de Manutenção
+  const [modalNovaOs, setModalNovaOs] = useState(false);
+  const [formTipoOs, setFormTipoOs] = useState<'preventiva' | 'corretiva'>('preventiva');
+  const [formDescOs, setFormDescOs] = useState('');
+
+  const carregarDados = async () => {
+    setLoading(true);
+    setErro(null);
+    try {
+      const [
+        resForn,
+        resPc,
+        resLotes,
+        resMov,
+        resBancos,
+        resPed,
+        resOs,
+        resLgpd,
+        resAudit,
+      ] = await Promise.all([
+        supabase.from('fornecedores').select('*').order('codigo', { ascending: true }),
+        supabase
+          .from('pedidos_compra')
+          .select('*, fornecedores(nome_fantasia)')
+          .order('data_emissao', { ascending: false }),
+        supabase
+          .from('estoque_lotes')
+          .select('*, ingredientes(codigo, nome), produtos(codigo_sku, nome)')
+          .order('data_validade', { ascending: true }),
+        supabase
+          .from('estoque_movimentacoes')
+          .select('*, estoque_lotes(codigo_lote)')
+          .order('created_at', { ascending: false })
+          .limit(20),
+        supabase.from('contas_bancarias').select('*').eq('ativo', true),
+        supabase
+          .from('pedidos')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(25),
+        supabase
+          .from('ordens_servico_manutencao')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase.from('lgpd_inventario_dados').select('*').order('codigo', { ascending: true }),
+        supabase
+          .from('auditoria_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ]);
+
+      setFornecedores(resForn.data || []);
+      setPedidosCompra(resPc.data || []);
+      setLotes(resLotes.data || []);
+      setMovimentacoes(resMov.data || []);
+      setContasBancarias(resBancos.data || []);
+      setPedidosVenda(resPed.data || []);
+      setOrdensManutencao(resOs.data || []);
+      setInventarioLgpd(resLgpd.data || []);
+      setAuditoriaLogs(resAudit.data || []);
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao carregar dados do módulo.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function buscarDadosModulo() {
-      if (!isSupabaseConfigured) return;
-      setCarregando(true);
-      const { data, error } = await supabase
-        .from(config.tabelaPrincipal)
-        .select(config.selectQuery)
-        .limit(50);
+    carregarDados();
+  }, [modulo]);
 
-      if (!error && data) {
-        const normalizados = data.map((item: any) => ({
-          ...item,
-          ingrediente_nome: item.ingredientes?.nome || '—',
-          endereco_codigo: item.enderecos_estoque?.codigo_endereco || '—',
-          produto_nome: item.produtos?.nome || '—',
-          cargo_nome: item.cargos?.nome || '—',
-          checklist_nome: item.checklists_modelos?.nome || '—',
-          projeto_nome: item.projetos?.nome || '—',
-        }));
-        setRegistros(normalizados);
-      } else {
-        setRegistros([]);
-      }
-      setCarregando(false);
+  const aprovarPedidoCompra = async (pcId: string) => {
+    setSalvando(true);
+    try {
+      await supabase
+        .from('pedidos_compra')
+        .update({ status: 'aprovado', data_aprovacao: new Date().toISOString() })
+        .eq('id', pcId);
+      await carregarDados();
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setSalvando(false);
     }
-
-    buscarDadosModulo();
-  }, [config.tabelaPrincipal, config.selectQuery]);
-
-  const registrosFiltrados = registros.filter((r) =>
-    JSON.stringify(r).toLowerCase().includes(filtroTexto.toLowerCase())
-  );
-
-  const formatarCelula = (valor: any, formato?: string) => {
-    if (valor === null || valor === undefined) return '—';
-    if (formato === 'moeda') return formatBRL(valor);
-    if (formato === 'data') return formatDateBR(String(valor));
-    if (formato === 'badge') {
-      return (
-        <span className="px-2 py-0.5 rounded bg-[#F5E8D8] text-[#701D2B] font-bold text-[11px] uppercase">
-          {String(valor)}
-        </span>
-      );
-    }
-    return String(valor);
   };
+
+  const criarOsManutencao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formDescOs.trim()) return;
+    setSalvando(true);
+    try {
+      const { data: equipSample } = await supabase
+        .from('equipamentos')
+        .select('id, unidade_id')
+        .limit(1)
+        .maybeSingle();
+
+      if (!equipSample) {
+        throw new Error('Cadastre um equipamento ativo antes de abrir uma OS.');
+      }
+
+      await supabase.from('ordens_servico_manutencao').insert({
+        unidade_id: equipSample.unidade_id,
+        equipamento_id: equipSample.id,
+        codigo: `OS-2026-${String(Math.floor(100 + Math.random() * 899))}`,
+        tipo: formTipoOs,
+        descricao_problema: formDescOs.trim(),
+        status: 'aberta',
+      });
+
+      setModalNovaOs(false);
+      setFormDescOs('');
+      await carregarDados();
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao abrir Ordem de Serviço.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Indicadores consolidados
+  const metricas = useMemo(() => {
+    const saldoBancario = contasBancarias.reduce(
+      (acc, c) => acc + Number(c.saldo_atual || 0),
+      0
+    );
+    const receitaPedidos = pedidosVenda
+      .filter((p) => p.status !== 'cancelado')
+      .reduce((acc, p) => acc + Number(p.valor_total || 0), 0);
+    const comprasTotais = pedidosCompra.reduce(
+      (acc, p) => acc + Number(p.valor_total || 0),
+      0
+    );
+    const valorEstoque = lotes.reduce(
+      (acc, l) => acc + Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0),
+      0
+    );
+
+    return { saldoBancario, receitaPedidos, comprasTotais, valorEstoque };
+  }, [contasBancarias, pedidosVenda, pedidosCompra, lotes]);
+
+  const configModulo = useMemo(() => {
+    if (modulo.includes('supriment') || modulo.includes('compra') || modulo.includes('estoque')) {
+      return {
+        categoria: 'Módulo 5.5 & 5.6 • Suprimentos, Compras & Estoque FEFO',
+        titulo: 'Fornecedores Homologados, Pedidos de Compra & Lotes FEFO',
+        descricao:
+          'Gestão de cadeia de suprimentos, aprovação de pedidos de compra e rastreamento de lotes por data de validade (FEFO).',
+      };
+    }
+    if (modulo.includes('financ') || modulo.includes('dre')) {
+      return {
+        categoria: 'Módulo 5.10 • Financeiro, Tesouraria & DRE Gerencial',
+        titulo: 'Disponibilidades Bancárias, Fluxo de Caixa & Resultado',
+        descricao:
+          'Consolidação de saldos em conta corrente/cofre, receitas operacionais e compromissos de fornecedores.',
+      };
+    }
+    if (modulo.includes('fiscal')) {
+      return {
+        categoria: 'Módulo 5.11 • Fiscal & Tributário Simulado',
+        titulo: 'Simulador Tributário (Simples Nacional / Lucro Presumido) & Documentos',
+        descricao:
+          'Apuração gerencial de carga tributária estimada sobre faturamento de pâtisserie e cafeteria (ambiente demonstrativo).',
+      };
+    }
+    if (modulo.includes('manutenc')) {
+      return {
+        categoria: 'Módulo 5.13 • Manutenção & Gestão de Ativos',
+        titulo: 'Manutenção Preventiva & Corretiva de Fornos e Câmaras Frias',
+        descricao:
+          'Controle de ordens de serviço técnicas para preservação da cadeia fria e continuidade da produção.',
+      };
+    }
+    return {
+      categoria: 'Módulo 5.14 & 5.15 • Governança, Auditoria & Conformidade LGPD',
+      titulo: 'Registro de Operações de Tratamento (ROPA) & Trilha de Auditoria',
+      descricao:
+        'Transparência de bases legais LGPD, retenção de dados e trilha imutável de auditoria das operações do ERP.',
+    };
+  }, [modulo]);
 
   return (
     <div className="space-y-6">
       <ModuloHeader
-        categoria={config.categoria}
-        titulo={config.titulo}
-        descricao={config.descricao}
-        dadosExportacao={registrosFiltrados}
+        categoria={configModulo.categoria}
+        titulo={configModulo.titulo}
+        descricao={configModulo.descricao}
+        dadosExportacao={
+          modulo.includes('supriment') || modulo.includes('estoque')
+            ? lotes
+            : modulo.includes('financ') || modulo.includes('fiscal')
+            ? contasBancarias
+            : inventarioLgpd
+        }
         nomeArquivoCsv={`docegestao_${modulo}.csv`}
+        textoBotaoNovo={modulo.includes('manutenc') ? 'Nova OS Manutenção' : undefined}
+        onNovoRegistro={modulo.includes('manutenc') ? () => setModalNovaOs(true) : undefined}
       />
 
-      {/* Cards de Indicadores do Módulo */}
-      <div className="grid md:grid-cols-3 gap-4">
-        {config.cardsResumo.map((c) => (
-          <div key={c.label} className="bg-white p-5 rounded-2xl border border-[#E8D4BC]">
-            <p className="text-xs font-semibold text-[#7F7269]">{c.label}</p>
-            <p className="font-serif text-2xl font-bold text-[#701D2B] mt-1">{c.valor}</p>
-            <p className="text-[11px] text-[#542C20]/80 mt-1 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#C69A55]" />
-              {c.detalhe}
-            </p>
-          </div>
-        ))}
-      </div>
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-xs flex justify-between">
+          <span>{erro}</span>
+          <button onClick={() => setErro(null)} className="font-bold">
+            Fechar
+          </button>
+        </div>
+      )}
 
-      {/* Barra de Filtro e Tabela Dinâmica */}
-      <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
-        <div className="p-4 border-b border-[#E8D4BC] flex flex-wrap items-center justify-between gap-3">
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-[#A99B91] absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={filtroTexto}
-              onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder="Filtrar registros nesta tabela..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FBF5EE] border border-[#E8D4BC] rounded-lg focus:outline-none focus:border-[#C69A55]"
-            />
+      {/* CARDS EXECUTIVOS TRANSVERSAIS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+          <div className="flex items-center justify-between text-xs text-[#7F7269]">
+            <span>Saldo Caixa & Bancos</span>
+            <Wallet className="w-4 h-4 text-emerald-600" />
           </div>
-          <span className="text-xs text-[#7F7269] flex items-center gap-1">
-            <Info className="w-3.5 h-3.5 text-[#701D2B]" />
-            Exibindo {registrosFiltrados.length} registros reais do Supabase ({config.tabelaPrincipal})
-          </span>
+          <p className="text-2xl font-bold text-emerald-700 mt-1">
+            R$ {metricas.saldoBancario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-[#701D2B] text-[#F5E8D8]">
-              <tr>
-                {config.colunas.map((col) => (
-                  <th key={col.chave} className="p-3.5 font-semibold">
-                    {col.titulo}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E8D4BC]">
-              {carregando ? (
-                <tr>
-                  <td colSpan={config.colunas.length} className="p-8 text-center text-[#7F7269]">
-                    Carregando dados do PostgreSQL...
-                  </td>
-                </tr>
-              ) : registrosFiltrados.length === 0 ? (
-                <tr>
-                  <td colSpan={config.colunas.length} className="p-8 text-center text-[#7F7269]">
-                    <ShieldAlert className="w-5 h-5 mx-auto mb-1 text-[#C69A55]" />
-                    Nenhum registro encontrado para o filtro atual ou protegido pela política RLS do perfil selecionado.
-                  </td>
-                </tr>
-              ) : (
-                registrosFiltrados.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-[#FBF5EE] transition-colors">
-                    {config.colunas.map((col) => (
-                      <td key={col.chave} className="p-3.5 text-[#542C20]">
-                        {formatarCelula(row[col.chave], col.formato)}
-                      </td>
-                    ))}
+        <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+          <div className="flex items-center justify-between text-xs text-[#7F7269]">
+            <span>Valor Imobilizado em Lotes</span>
+            <Package className="w-4 h-4 text-[#701D2B]" />
+          </div>
+          <p className="text-2xl font-bold text-[#542C20] mt-1">
+            R$ {metricas.valorEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+          <div className="flex items-center justify-between text-xs text-[#7F7269]">
+            <span>Pedidos de Compra</span>
+            <Truck className="w-4 h-4 text-[#C69A55]" />
+          </div>
+          <p className="text-2xl font-bold text-[#701D2B] mt-1">
+            R$ {metricas.comprasTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+          <div className="flex items-center justify-between text-xs text-[#7F7269]">
+            <span>Processos ROPA / LGPD</span>
+            <ShieldAlert className="w-4 h-4 text-emerald-600" />
+          </div>
+          <p className="text-2xl font-bold text-[#542C20] mt-1">{inventarioLgpd.length}</p>
+        </div>
+      </div>
+
+      {/* VISÃO 1: SUPRIMENTOS & ESTOQUE FEFO */}
+      {(modulo.includes('supriment') ||
+        modulo.includes('compra') ||
+        modulo.includes('estoque')) && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
+              <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                Pedidos de Compra & Fornecedores Homologados
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                    <th className="py-3 px-4">Pedido</th>
+                    <th className="py-3 px-3">Fornecedor</th>
+                    <th className="py-3 px-3">Previsão Entrega</th>
+                    <th className="py-3 px-3">Valor Total</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-4 text-right">Aprovação</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-[#F5E8D8]">
+                  {pedidosCompra.map((pc) => (
+                    <tr key={pc.id} className="hover:bg-[#FBF5EE]">
+                      <td className="py-3 px-4 font-bold text-[#701D2B]">{pc.codigo}</td>
+                      <td className="py-3 px-3 font-semibold text-[#542C20]">
+                        {pc.fornecedores?.nome_fantasia || 'Fornecedor Homologado'}
+                      </td>
+                      <td className="py-3 px-3">
+                        {pc.data_previsao_entrega?.split('-').reverse().join('/')}
+                      </td>
+                      <td className="py-3 px-3 font-bold">
+                        R$ {Number(pc.valor_total).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3 uppercase font-semibold">{pc.status}</td>
+                      <td className="py-3 px-4 text-right">
+                        {podeEditar() && pc.status === 'aguardando_aprovacao' && (
+                          <button
+                            onClick={() => aprovarPedidoCompra(pc.id)}
+                            disabled={salvando}
+                            className="px-3 py-1 rounded-lg bg-[#701D2B] text-white text-[11px] font-semibold"
+                          >
+                            Aprovar Compra
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
+              <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                Posição de Lotes em Estoque (Ordenado por Validade FEFO)
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                    <th className="py-3 px-4">Lote</th>
+                    <th className="py-3 px-3">Item (Insumo / Produto)</th>
+                    <th className="py-3 px-3">Validade FEFO</th>
+                    <th className="py-3 px-3">Saldo Atual</th>
+                    <th className="py-3 px-3">Situação Sanitária</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F5E8D8]">
+                  {lotes.map((l) => (
+                    <tr key={l.id} className="hover:bg-[#FBF5EE]">
+                      <td className="py-3 px-4 font-bold text-[#701D2B]">{l.codigo_lote}</td>
+                      <td className="py-3 px-3 font-medium text-[#542C20]">
+                        {l.ingredientes?.nome || l.produtos?.nome || '-'}
+                      </td>
+                      <td className="py-3 px-3 font-semibold">
+                        {l.data_validade?.split('-').reverse().join('/')}
+                      </td>
+                      <td className="py-3 px-3">
+                        {l.quantidade_atual} / {l.quantidade_inicial}
+                      </td>
+                      <td className="py-3 px-3 uppercase font-bold">{l.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* VISÃO 2: FINANCEIRO, DRE & FISCAL SIMULADO */}
+      {(modulo.includes('financ') || modulo.includes('dre') || modulo.includes('fiscal')) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC] space-y-3 text-xs">
+            <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-[#701D2B]" />
+              DRE Gerencial & Simulação Tributária (Competência Atual)
+            </h3>
+            <div className="divide-y divide-[#F5E8D8]">
+              <div className="py-2.5 flex justify-between">
+                <span>(+) Receita Bruta de Vendas (Salão, Delivery & Eventos)</span>
+                <strong className="text-emerald-700 flex items-center gap-1">
+                  <ArrowUpRight className="w-3.5 h-3.5" /> R${' '}
+                  {metricas.receitaPedidos.toFixed(2)}
+                </strong>
+              </div>
+              <div className="py-2.5 flex justify-between">
+                <span>(-) Deduções & Simples Nacional Simulado (6,0%)</span>
+                <strong className="text-red-700 flex items-center gap-1">
+                  <ArrowDownRight className="w-3.5 h-3.5" /> R${' '}
+                  {(metricas.receitaPedidos * 0.06).toFixed(2)}
+                </strong>
+              </div>
+              <div className="py-2.5 flex justify-between">
+                <span>(-) Custo de Mercadoria Vendida (CMV Estimado 28%)</span>
+                <strong className="text-red-700">
+                  R$ {(metricas.receitaPedidos * 0.28).toFixed(2)}
+                </strong>
+              </div>
+              <div className="py-3 flex justify-between text-sm font-bold text-[#701D2B] bg-[#FBF5EE] px-3 rounded-lg mt-2">
+                <span>(=) Margem de Contribuição Operacional</span>
+                <span>R$ {(metricas.receitaPedidos * 0.66).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC] space-y-3 text-xs">
+            <h3 className="font-serif text-lg font-bold text-[#542C20]">
+              Contas Bancárias & Tesouraria
+            </h3>
+            {contasBancarias.map((cb) => (
+              <div
+                key={cb.id}
+                className="p-3.5 rounded-xl border border-[#E8D4BC] bg-[#FBF5EE] flex justify-between items-center"
+              >
+                <div>
+                  <p className="font-bold text-[#542C20]">{cb.banco_nome}</p>
+                  <p className="text-[#7F7269]">
+                    Ag: {cb.agencia} • Conta: {cb.conta_numero} ({cb.tipo})
+                  </p>
+                </div>
+                <span className="text-base font-bold text-emerald-700">
+                  R$ {Number(cb.saldo_atual).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* VISÃO 3: MANUTENÇÃO & ATIVOS */}
+      {modulo.includes('manutenc') && (
+        <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+          <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
+            <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
+              <Wrench className="w-5 h-5 text-[#701D2B]" />
+              Ordens de Serviço — Equipamentos Críticos
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                  <th className="py-3 px-4">Código OS</th>
+                  <th className="py-3 px-3">Tipo</th>
+                  <th className="py-3 px-3">Descrição Técnica</th>
+                  <th className="py-3 px-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F5E8D8]">
+                {ordensManutencao.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-[#7F7269]">
+                      Nenhuma OS aberta no momento. Clique em "Nova OS Manutenção" para registrar.
+                    </td>
+                  </tr>
+                ) : (
+                  ordensManutencao.map((os) => (
+                    <tr key={os.id}>
+                      <td className="py-3 px-4 font-bold text-[#701D2B]">{os.codigo}</td>
+                      <td className="py-3 px-3 uppercase font-semibold">{os.tipo}</td>
+                      <td className="py-3 px-3">{os.descricao_problema}</td>
+                      <td className="py-3 px-3 uppercase font-bold">{os.status}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VISÃO 4: GOVERNANÇA, AUDITORIA & LGPD */}
+      {!modulo.includes('supriment') &&
+        !modulo.includes('compra') &&
+        !modulo.includes('estoque') &&
+        !modulo.includes('financ') &&
+        !modulo.includes('dre') &&
+        !modulo.includes('fiscal') &&
+        !modulo.includes('manutenc') && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC] space-y-3 text-xs">
+              <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                Inventário de Dados Pessoais (ROPA — Art. 37 LGPD)
+              </h3>
+              {inventarioLgpd.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-3.5 rounded-xl border border-[#E8D4BC] bg-[#FBF5EE] space-y-1"
+                >
+                  <div className="flex justify-between">
+                    <span className="font-bold text-[#701D2B]">{item.codigo}</span>
+                    <span className="uppercase font-semibold text-[#C69A55]">
+                      Titular: {item.categoria_titular}
+                    </span>
+                  </div>
+                  <p className="font-bold text-[#542C20]">{item.processo_negocio}</p>
+                  <p className="text-[#7F7269]">Base Legal: {item.base_legal}</p>
+                  <p className="text-[#542C20]">Retenção: {item.prazo_retencao}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC] space-y-3 text-xs">
+              <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                Trilha de Auditoria Imutável (Logs Recentes)
+              </h3>
+              <div className="divide-y divide-[#F5E8D8]">
+                {auditoriaLogs.map((log) => (
+                  <div key={log.id} className="py-2.5 flex justify-between items-center">
+                    <div>
+                      <span className="font-bold text-[#701D2B]">{log.tabela_nome}</span>
+                      <p className="text-[#7F7269]">{log.operacao}</p>
+                    </div>
+                    <span className="text-[11px] text-[#7F7269]">
+                      {new Date(log.created_at).toLocaleString('pt-BR')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+      {/* MODAL NOVA OS MANUTENÇÃO */}
+      {modalNovaOs && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 bg-[#701D2B] text-[#F5E8D8] flex items-center justify-between">
+              <h3 className="font-serif text-lg font-bold">Abrir Ordem de Serviço</h3>
+              <button onClick={() => setModalNovaOs(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={criarOsManutencao} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-[#542C20]">Tipo de Manutenção</label>
+                <select
+                  value={formTipoOs}
+                  onChange={(e) => setFormTipoOs(e.target.value as any)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC] bg-white"
+                >
+                  <option value="preventiva">Preventiva (Calibração / Vedação)</option>
+                  <option value="corretiva">Corretiva</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-bold text-[#542C20]">Descrição Técnica *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={formDescOs}
+                  onChange={(e) => setFormDescOs(e.target.value)}
+                  placeholder="Ex: Aferição preventiva do termostato da câmara fria principal..."
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNovaOs(false)}
+                  className="px-4 py-2 rounded-lg border border-[#E8D4BC]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-4 py-2 rounded-lg bg-[#701D2B] text-white font-semibold"
+                >
+                  Abrir OS
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default ModuloCorporativoUnificadoPage;
