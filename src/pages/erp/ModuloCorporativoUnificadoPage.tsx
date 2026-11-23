@@ -6,7 +6,6 @@ import {
   Wallet,
   Receipt,
   Wrench,
-  ShieldAlert,
   QrCode,
   FolderKanban,
   FileCheck2,
@@ -17,24 +16,38 @@ import {
   ArrowDownRight,
   CheckCircle2,
   AlertTriangle,
+  Star,
+  Clock,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { ModuloHeader } from '../../components/shared/ModuloHeader';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const ModuloCorporativoUnificadoPage: React.FC = () => {
-  const { modulo = 'suprimentos' } = useParams<{ modulo: string }>();
+  const { modulo = 'estoque' } = useParams<{ modulo: string }>();
   const { podeEditar } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  // Suprimentos & Estoque
-  const [pedidosCompra, setPedidosCompra] = useState<any[]>([]);
+  // Estoque & FEFO
   const [lotes, setLotes] = useState<any[]>([]);
+  const [movimentacoesEstoque, setMovimentacoesEstoque] = useState<any[]>([]);
+  const [modalAjusteLote, setModalAjusteLote] = useState<any | null>(null);
+  const [formQtdAjuste, setFormQtdAjuste] = useState<number>(0);
+  const [formMotivoAjuste, setFormMotivoAjuste] = useState('');
 
-  // Financeiro & Fiscal
+  // Compras & Fornecedores
+  const [fornecedores, setFornecedores] = useState<any[]>([]);
+  const [pedidosCompra, setPedidosCompra] = useState<any[]>([]);
+  const [modalNovoPc, setModalNovoPc] = useState(false);
+  const [formFornId, setFormFornId] = useState('');
+  const [formValorPc, setFormValorPc] = useState<number>(1500);
+  const [formObsPc, setFormObsPc] = useState('');
+
+  // Financeiro & Fiscal (fallback caso acessado via slug genérico)
   const [contasBancarias, setContasBancarias] = useState<any[]>([]);
   const [pedidosVenda, setPedidosVenda] = useState<any[]>([]);
 
@@ -66,9 +79,12 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
   const [avisosLgpd, setAvisosLgpd] = useState<any[]>([]);
   const [incidentesLgpd, setIncidentesLgpd] = useState<any[]>([]);
 
-  // Classificação exata do módulo pela rota
+  // Classificação exata e separada de cada módulo pela rota
   const tipoModulo = useMemo(() => {
     const slug = modulo.toLowerCase();
+    if (slug.includes('compra') || slug.includes('fornec') || slug.includes('supriment'))
+      return 'compras';
+    if (slug.includes('estoque') || slug.includes('fefo')) return 'estoque';
     if (slug.includes('patrimon')) return 'patrimonio';
     if (slug.includes('projet')) return 'projetos';
     if (slug.includes('document') || slug.includes('ged')) return 'documentos';
@@ -77,26 +93,41 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     if (slug.includes('manutenc')) return 'manutencao';
     if (slug.includes('financ') || slug.includes('dre') || slug.includes('fiscal'))
       return 'financeiro';
-    return 'suprimentos';
+    return 'estoque';
   }, [modulo]);
 
   const carregarDados = async () => {
     setLoading(true);
     setErro(null);
     try {
-      if (tipoModulo === 'suprimentos') {
-        const [resPc, resLotes] = await Promise.all([
-          supabase
-            .from('pedidos_compra')
-            .select('*, fornecedores(nome_fantasia)')
-            .order('data_emissao', { ascending: false }),
+      if (tipoModulo === 'estoque') {
+        const [resLotes, resMov] = await Promise.all([
           supabase
             .from('estoque_lotes')
-            .select('*, ingredientes(codigo, nome), produtos(codigo_sku, nome)')
+            .select('*, ingredientes(codigo, nome, unidade_medida), produtos(codigo_sku, nome)')
             .order('data_validade', { ascending: true }),
+          supabase
+            .from('estoque_movimentacoes')
+            .select('*, estoque_lotes(codigo_lote)')
+            .order('created_at', { ascending: false })
+            .limit(25),
         ]);
-        setPedidosCompra(resPc.data || []);
         setLotes(resLotes.data || []);
+        setMovimentacoesEstoque(resMov.data || []);
+      } else if (tipoModulo === 'compras') {
+        const [resForn, resPc] = await Promise.all([
+          supabase.from('fornecedores').select('*').order('codigo', { ascending: true }),
+          supabase
+            .from('pedidos_compra')
+            .select('*, fornecedores(nome_fantasia, categoria_fornecimento)')
+            .order('data_emissao', { ascending: false }),
+        ]);
+        const listaForn = resForn.data || [];
+        setFornecedores(listaForn);
+        if (listaForn.length > 0 && !formFornId) {
+          setFormFornId(listaForn[0].id);
+        }
+        setPedidosCompra(resPc.data || []);
       } else if (tipoModulo === 'financeiro') {
         const [resBancos, resPed] = await Promise.all([
           supabase.from('contas_bancarias').select('*').eq('ativo', true),
@@ -126,7 +157,10 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
       } else if (tipoModulo === 'projetos') {
         const [resProj, resTar] = await Promise.all([
           supabase.from('projetos').select('*').order('codigo', { ascending: true }),
-          supabase.from('tarefas').select('*, projetos(codigo, nome)').order('prazo', { ascending: true }),
+          supabase
+            .from('tarefas')
+            .select('*, projetos(codigo, nome)')
+            .order('prazo', { ascending: true }),
         ]);
         setProjetos(resProj.data || []);
         setTarefas(resTar.data || []);
@@ -156,7 +190,10 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
       } else if (tipoModulo === 'lgpd') {
         const [resInv, resAvisos, resInc] = await Promise.all([
           supabase.from('lgpd_inventario_dados').select('*').order('codigo', { ascending: true }),
-          supabase.from('lgpd_avisos_privacidade').select('*').order('publicado_em', { ascending: false }),
+          supabase
+            .from('lgpd_avisos_privacidade')
+            .select('*')
+            .order('publicado_em', { ascending: false }),
           supabase.from('lgpd_incidentes').select('*').order('data_ocorrencia', { ascending: false }),
         ]);
         setInventarioLgpd(resInv.data || []);
@@ -174,16 +211,93 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     carregarDados();
   }, [tipoModulo]);
 
-  const aprovarPedidoCompra = async (pcId: string) => {
+  // Ações de Estoque FEFO
+  const abrirAjusteLote = (lote: any) => {
+    setModalAjusteLote(lote);
+    setFormQtdAjuste(Number(lote.quantidade_atual || 0));
+    setFormMotivoAjuste('');
+  };
+
+  const salvarAjusteInventario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalAjusteLote) return;
+    setSalvando(true);
+    try {
+      const novaQtd = Math.max(0, Number(formQtdAjuste));
+      const diferenca = novaQtd - Number(modalAjusteLote.quantidade_atual || 0);
+
+      await supabase
+        .from('estoque_lotes')
+        .update({ quantidade_atual: novaQtd })
+        .eq('id', modalAjusteLote.id);
+
+      await supabase.from('estoque_movimentacoes').insert({
+        unidade_id: modalAjusteLote.unidade_id,
+        lote_id: modalAjusteLote.id,
+        tipo_movimentacao: 'ajuste_inventario',
+        quantidade: Math.abs(diferenca),
+        custo_unitario: Number(modalAjusteLote.custo_unitario || 0),
+        observacao:
+          formMotivoAjuste.trim() ||
+          `Ajuste físico de inventário (${diferenca >= 0 ? '+' : ''}${diferenca}).`,
+      });
+
+      setModalAjusteLote(null);
+      await carregarDados();
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao registrar ajuste de estoque.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Ações de Compras & Fornecedores
+  const avancarStatusPedidoCompra = async (pcId: string, novoStatus: string) => {
     setSalvando(true);
     try {
       await supabase
         .from('pedidos_compra')
-        .update({ status: 'aprovado', data_aprovacao: new Date().toISOString() })
+        .update({
+          status: novoStatus,
+          ...(novoStatus === 'aprovado' ? { data_aprovacao: new Date().toISOString() } : {}),
+        })
         .eq('id', pcId);
       await carregarDados();
     } catch (e: any) {
       setErro(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const criarPedidoCompra = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formFornId || formValorPc <= 0) return;
+    setSalvando(true);
+    try {
+      const fornecedorEscolhido = fornecedores.find((f) => f.id === formFornId);
+      const previsao = new Date();
+      previsao.setDate(previsao.getDate() + Number(fornecedorEscolhido?.prazo_entrega_dias || 3));
+
+      const { data: unSample } = await supabase.from('unidades').select('id').limit(1).maybeSingle();
+
+      await supabase.from('pedidos_compra').insert({
+        codigo: `PC-2026-${String(Math.floor(100 + Math.random() * 899))}`,
+        unidade_id: unSample?.id || '11111111-1111-1111-1111-111111111101',
+        fornecedor_id: formFornId,
+        data_emissao: new Date().toISOString().split('T')[0],
+        data_previsao_entrega: previsao.toISOString().split('T')[0],
+        valor_total: Number(formValorPc),
+        condicao_pagamento: fornecedorEscolhido?.condicao_pagamento || '28 dias',
+        observacoes: formObsPc.trim() || 'Solicitação de reposição emitida via ERP.',
+        status: 'aguardando_aprovacao',
+      });
+
+      setModalNovoPc(false);
+      setFormObsPc('');
+      await carregarDados();
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao emitir pedido de compra.');
     } finally {
       setSalvando(false);
     }
@@ -240,6 +354,26 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
 
   const cabecalho = useMemo(() => {
     switch (tipoModulo) {
+      case 'estoque':
+        return {
+          categoria: 'Módulo 5.6 • Almoxarifado, Lotes & Controle FEFO',
+          titulo: 'Controle de Estoque FEFO & Rastreabilidade de Lotes',
+          descricao:
+            'Gestão de saldos por lote, ordenação automática por data de validade (First-Expire, First-Out), inventário físico e Kardex de movimentações.',
+          csv: lotes,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
+        };
+      case 'compras':
+        return {
+          categoria: 'Módulo 5.5 • Suprimentos, Compras & Homologação',
+          titulo: 'Pedidos de Compra & Fornecedores Homologados',
+          descricao:
+            'Emissão e aprovação de ordens de compra, controle de lead time de entrega, condições comerciais e avaliação de SLA de fornecedores.',
+          csv: pedidosCompra,
+          botaoNovo: 'Novo Pedido de Compra',
+          acaoNovo: () => setModalNovoPc(true),
+        };
       case 'patrimonio':
         return {
           categoria: 'Módulo 5.7 • Patrimônio & Ativos Imobilizados (QR Code)',
@@ -247,6 +381,8 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           descricao:
             'Controle individual de fornos, batedeiras, câmaras frias e mobiliário com cálculo de depreciação linear e aprovação de movimentações.',
           csv: ativosPatrimonio,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
         };
       case 'projetos':
         return {
@@ -255,14 +391,18 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           descricao:
             'Acompanhamento de expansão de unidades, lançamentos sazonais de confeitaria e implantação de melhorias contínuas.',
           csv: projetos,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
         };
       case 'documentos':
         return {
           categoria: 'Módulo 5.14 • Gestão Eletrônica de Documentos (GED)',
           titulo: 'Repositório Institucional, Alvarás Sanitários & Contratos',
           descricao:
-            'Controle de versionamento, vigência documental, níveis de sigilo e assinatura eletrônica de alvarás ANVISA/Vigilância e contratos.',
+            'Controle de versionamento, vigência documental, níveis de sigilo e assinatura eletrônica de alvarás sanitários e contratos.',
           csv: documentosGed,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
         };
       case 'seguranca':
         return {
@@ -271,6 +411,8 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           descricao:
             'Rastreabilidade imutável de alterações em tabelas críticas, logs de autenticação RBAC e investigação de anomalias.',
           csv: auditoriaLogs,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
         };
       case 'lgpd':
         return {
@@ -279,6 +421,8 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           descricao:
             'Conformidade com a Lei nº 13.709/2018: mapeamento de bases legais, prazos de retenção e gestão de incidentes.',
           csv: inventarioLgpd,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
         };
       case 'manutencao':
         return {
@@ -287,26 +431,23 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           descricao:
             'Ordens de serviço técnicas para preservação da cadeia fria, calibração de termostatos e continuidade da produção.',
           csv: ordensManutencao,
-        };
-      case 'financeiro':
-        return {
-          categoria: 'Módulo 5.10 & 5.11 • Financeiro, DRE & Fiscal Simulado',
-          titulo: 'Disponibilidades Bancárias, DRE Gerencial & Carga Tributária',
-          descricao:
-            'Consolidação de saldos em conta corrente/cofre, margem operacional e simulação tributária.',
-          csv: contasBancarias,
+          botaoNovo: 'Nova OS Manutenção',
+          acaoNovo: () => setModalNovaOs(true),
         };
       default:
         return {
-          categoria: 'Módulo 5.5 & 5.6 • Suprimentos, Compras & Estoque FEFO',
-          titulo: 'Fornecedores Homologados, Pedidos de Compra & Lotes FEFO',
-          descricao:
-            'Gestão de compras, aprovação de pedidos e rastreamento de lotes por validade (FEFO).',
-          csv: lotes,
+          categoria: 'Módulo 5.10 • Financeiro & Tesouraria',
+          titulo: 'Disponibilidades Bancárias & Resultado',
+          descricao: 'Consolidação de saldos e movimentações financeiras.',
+          csv: contasBancarias,
+          botaoNovo: undefined,
+          acaoNovo: undefined,
         };
     }
   }, [
     tipoModulo,
+    lotes,
+    pedidosCompra,
     ativosPatrimonio,
     projetos,
     documentosGed,
@@ -314,7 +455,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     inventarioLgpd,
     ordensManutencao,
     contasBancarias,
-    lotes,
   ]);
 
   return (
@@ -325,8 +465,8 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         descricao={cabecalho.descricao}
         dadosExportacao={cabecalho.csv}
         nomeArquivoCsv={`docegestao_${tipoModulo}.csv`}
-        textoBotaoNovo={tipoModulo === 'manutencao' ? 'Nova OS Manutenção' : undefined}
-        onNovoRegistro={tipoModulo === 'manutencao' ? () => setModalNovaOs(true) : undefined}
+        textoBotaoNovo={cabecalho.botaoNovo}
+        onNovoRegistro={cabecalho.acaoNovo}
       />
 
       {erro && (
@@ -338,7 +478,348 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 1. PATRIMÔNIO (QR CODE) ==================== */}
+      {/* ==================== 1. ESTOQUE & FEFO (EXCLUSIVO) ==================== */}
+      {tipoModulo === 'estoque' && (() => {
+        const valorTotalEstoque = lotes.reduce(
+          (acc, l) => acc + Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0),
+          0
+        );
+        const lotesLiberados = lotes.filter((l) => l.status === 'liberado').length;
+        const lotesBloqueados = lotes.filter((l) => l.status !== 'liberado').length;
+
+        return (
+          <div className="space-y-6">
+            {/* 4 KPIs de Estoque */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Valor Imobilizado em Estoque</span>
+                <p className="text-2xl font-bold text-[#701D2B] mt-1">
+                  R$ {valorTotalEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Lotes Liberados (Uso Imediato)</span>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">{lotesLiberados}</p>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Quarentena / Bloqueados BPF</span>
+                <p className="text-2xl font-bold text-amber-700 mt-1">{lotesBloqueados}</p>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Movimentações Kardex</span>
+                <p className="text-2xl font-bold text-[#542C20] mt-1">
+                  {movimentacoesEstoque.length}
+                </p>
+              </div>
+            </div>
+
+            {/* Tabela de Lotes FEFO */}
+            <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+              <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40 flex justify-between items-center">
+                <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
+                  <Package className="w-5 h-5 text-[#701D2B]" />
+                  Posição de Lotes em Estoque (Fila FEFO — Vencimento Mais Próximo Primeiro)
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                      <th className="py-3 px-4">Lote</th>
+                      <th className="py-3 px-3">Insumo / Produto</th>
+                      <th className="py-3 px-3">Validade FEFO</th>
+                      <th className="py-3 px-3">Saldo Atual</th>
+                      <th className="py-3 px-3">Custo Total Lote</th>
+                      <th className="py-3 px-3">Situação</th>
+                      <th className="py-3 px-4 text-right">Inventário</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F5E8D8]">
+                    {lotes.map((l) => {
+                      const pct =
+                        Number(l.quantidade_inicial) > 0
+                          ? Math.min(
+                              100,
+                              Math.round(
+                                (Number(l.quantidade_atual) / Number(l.quantidade_inicial)) * 100
+                              )
+                            )
+                          : 0;
+                      const custoLote =
+                        Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0);
+
+                      return (
+                        <tr key={l.id} className="hover:bg-[#FBF5EE]">
+                          <td className="py-3 px-4 font-bold text-[#701D2B]">{l.codigo_lote}</td>
+                          <td className="py-3 px-3 font-semibold text-[#542C20]">
+                            {l.ingredientes?.nome || l.produtos?.nome || '-'}
+                          </td>
+                          <td className="py-3 px-3 font-semibold">
+                            {l.data_validade?.split('-').reverse().join('/')}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-semibold">
+                              {l.quantidade_atual} / {l.quantidade_inicial}{' '}
+                              {l.ingredientes?.unidade_medida || 'un'}
+                            </div>
+                            <div className="w-24 h-1.5 bg-[#F5E8D8] rounded-full mt-1 overflow-hidden">
+                              <div
+                                className="h-full bg-[#701D2B]"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 font-bold">R$ {custoLote.toFixed(2)}</td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                l.status === 'liberado'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {l.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {podeEditar() && (
+                              <button
+                                onClick={() => abrirAjusteLote(l)}
+                                className="px-2.5 py-1 rounded-lg border border-[#E8D4BC] bg-white hover:bg-[#F5E8D8] text-[#542C20] text-[11px] font-semibold inline-flex items-center gap-1"
+                              >
+                                <SlidersHorizontal className="w-3 h-3" /> Ajustar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Kardex de Movimentações */}
+            <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+              <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
+                <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                  Kardex — Histórico de Movimentações de Estoque
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                      <th className="py-3 px-4">Data / Hora</th>
+                      <th className="py-3 px-3">Lote</th>
+                      <th className="py-3 px-3">Tipo Movimentação</th>
+                      <th className="py-3 px-3">Quantidade</th>
+                      <th className="py-3 px-3">Observação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F5E8D8]">
+                    {movimentacoesEstoque.map((m) => (
+                      <tr key={m.id}>
+                        <td className="py-2.5 px-4 text-[#7F7269]">
+                          {new Date(m.created_at).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-[#701D2B]">
+                          {m.estoque_lotes?.codigo_lote || '-'}
+                        </td>
+                        <td className="py-2.5 px-3 uppercase font-semibold">
+                          {m.tipo_movimentacao.replace('_', ' ')}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold">{m.quantidade}</td>
+                        <td className="py-2.5 px-3 text-[#7F7269]">{m.observacao || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ==================== 2. COMPRAS & FORNECEDORES (EXCLUSIVO) ==================== */}
+      {tipoModulo === 'compras' && (() => {
+        const valorComprasTotal = pedidosCompra.reduce(
+          (acc, p) => acc + Number(p.valor_total || 0),
+          0
+        );
+        const pendentesAprovacao = pedidosCompra.filter(
+          (p) => p.status === 'aguardando_aprovacao'
+        ).length;
+        const notaMediaForn =
+          fornecedores.length > 0
+            ? fornecedores.reduce((acc, f) => acc + Number(f.nota_avaliacao || 0), 0) /
+              fornecedores.length
+            : 4.8;
+
+        return (
+          <div className="space-y-6">
+            {/* 4 KPIs de Compras */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Fornecedores Homologados</span>
+                <p className="text-2xl font-bold text-[#542C20] mt-1">{fornecedores.length}</p>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Volume em Pedidos de Compra</span>
+                <p className="text-2xl font-bold text-[#701D2B] mt-1">
+                  R$ {valorComprasTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Aguardando Aprovação</span>
+                <p className="text-2xl font-bold text-amber-700 mt-1">{pendentesAprovacao}</p>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
+                <span className="text-xs text-[#7F7269]">Score Médio SLA Fornecedores</span>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">
+                  {notaMediaForn.toFixed(1)} / 5,0
+                </p>
+              </div>
+            </div>
+
+            {/* Tabela de Pedidos de Compra */}
+            <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+              <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
+                <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-[#701D2B]" />
+                  Ordens de Compra & Fluxo de Recebimento
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                      <th className="py-3 px-4">Pedido</th>
+                      <th className="py-3 px-3">Fornecedor</th>
+                      <th className="py-3 px-3">Emissão</th>
+                      <th className="py-3 px-3">Previsão Entrega</th>
+                      <th className="py-3 px-3">Condição</th>
+                      <th className="py-3 px-3">Valor Total</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F5E8D8]">
+                    {pedidosCompra.map((pc) => (
+                      <tr key={pc.id} className="hover:bg-[#FBF5EE]">
+                        <td className="py-3 px-4 font-bold text-[#701D2B]">{pc.codigo}</td>
+                        <td className="py-3 px-3">
+                          <div className="font-semibold text-[#542C20]">
+                            {pc.fornecedores?.nome_fantasia || 'Fornecedor Homologado'}
+                          </div>
+                          <div className="text-[11px] text-[#7F7269]">{pc.observacoes}</div>
+                        </td>
+                        <td className="py-3 px-3">
+                          {pc.data_emissao?.split('-').reverse().join('/')}
+                        </td>
+                        <td className="py-3 px-3">
+                          {pc.data_previsao_entrega?.split('-').reverse().join('/')}
+                        </td>
+                        <td className="py-3 px-3">{pc.condicao_pagamento || '-'}</td>
+                        <td className="py-3 px-3 font-bold">
+                          R$ {Number(pc.valor_total).toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              pc.status === 'recebido_total'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : pc.status === 'aprovado'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {pc.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {podeEditar() && pc.status === 'aguardando_aprovacao' && (
+                            <button
+                              onClick={() => avancarStatusPedidoCompra(pc.id, 'aprovado')}
+                              disabled={salvando}
+                              className="px-3 py-1 rounded-lg bg-[#701D2B] text-white text-[11px] font-semibold"
+                            >
+                              Aprovar
+                            </button>
+                          )}
+                          {podeEditar() && pc.status === 'aprovado' && (
+                            <button
+                              onClick={() => avancarStatusPedidoCompra(pc.id, 'recebido_total')}
+                              disabled={salvando}
+                              className="px-3 py-1 rounded-lg bg-emerald-700 text-white text-[11px] font-semibold"
+                            >
+                              Confirmar Recebimento
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Carteira de Fornecedores Homologados */}
+            <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
+              <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
+                <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                  Cadastro & Qualificação de Fornecedores Homologados
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
+                      <th className="py-3 px-4">Código</th>
+                      <th className="py-3 px-3">Fornecedor / CNPJ (Demo)</th>
+                      <th className="py-3 px-3">Categoria</th>
+                      <th className="py-3 px-3">Lead Time</th>
+                      <th className="py-3 px-3">Pagamento</th>
+                      <th className="py-3 px-3">Avaliação SLA</th>
+                      <th className="py-3 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F5E8D8]">
+                    {fornecedores.map((f) => (
+                      <tr key={f.id} className="hover:bg-[#FBF5EE]">
+                        <td className="py-3 px-4 font-bold text-[#701D2B]">{f.codigo}</td>
+                        <td className="py-3 px-3">
+                          <div className="font-semibold text-[#542C20]">{f.nome_fantasia}</div>
+                          <div className="text-[11px] text-[#7F7269]">
+                            {f.cnpj_ficticio} • {f.cidade}/{f.uf}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">{f.categoria_fornecimento}</td>
+                        <td className="py-3 px-3 inline-flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-[#C69A55]" /> {f.prazo_entrega_dias}{' '}
+                          dia(s)
+                        </td>
+                        <td className="py-3 px-3">{f.condicao_pagamento}</td>
+                        <td className="py-3 px-3 font-bold text-amber-700">
+                          <span className="inline-flex items-center gap-1">
+                            <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                            {Number(f.nota_avaliacao).toFixed(1)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 uppercase font-bold text-emerald-700">
+                          {f.status}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ==================== 3. PATRIMÔNIO (QR CODE) ==================== */}
       {tipoModulo === 'patrimonio' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -470,7 +951,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 2. PROJETOS & TAREFAS ==================== */}
+      {/* ==================== 4. PROJETOS & TAREFAS ==================== */}
       {tipoModulo === 'projetos' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -545,7 +1026,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 3. DOCUMENTOS / GED ==================== */}
+      {/* ==================== 5. DOCUMENTOS / GED ==================== */}
       {tipoModulo === 'documentos' && (
         <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
           <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
@@ -599,7 +1080,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 4. SEGURANÇA & AUDITORIA ==================== */}
+      {/* ==================== 6. SEGURANÇA & AUDITORIA ==================== */}
       {tipoModulo === 'seguranca' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -662,7 +1143,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 5. LGPD & PRIVACIDADE ==================== */}
+      {/* ==================== 7. LGPD & PRIVACIDADE ==================== */}
       {tipoModulo === 'lgpd' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -732,164 +1213,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 6. SUPRIMENTOS & ESTOQUE FEFO ==================== */}
-      {tipoModulo === 'suprimentos' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
-            <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
-              <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
-                <Truck className="w-5 h-5 text-[#701D2B]" />
-                Pedidos de Compra & Fornecedores Homologados
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
-                    <th className="py-3 px-4">Pedido</th>
-                    <th className="py-3 px-3">Fornecedor</th>
-                    <th className="py-3 px-3">Previsão Entrega</th>
-                    <th className="py-3 px-3">Valor Total</th>
-                    <th className="py-3 px-3">Status</th>
-                    <th className="py-3 px-4 text-right">Aprovação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F5E8D8]">
-                  {pedidosCompra.map((pc) => (
-                    <tr key={pc.id} className="hover:bg-[#FBF5EE]">
-                      <td className="py-3 px-4 font-bold text-[#701D2B]">{pc.codigo}</td>
-                      <td className="py-3 px-3 font-semibold text-[#542C20]">
-                        {pc.fornecedores?.nome_fantasia || 'Fornecedor Homologado'}
-                      </td>
-                      <td className="py-3 px-3">
-                        {pc.data_previsao_entrega?.split('-').reverse().join('/')}
-                      </td>
-                      <td className="py-3 px-3 font-bold">
-                        R$ {Number(pc.valor_total).toFixed(2)}
-                      </td>
-                      <td className="py-3 px-3 uppercase font-semibold">{pc.status}</td>
-                      <td className="py-3 px-4 text-right">
-                        {podeEditar() && pc.status === 'aguardando_aprovacao' && (
-                          <button
-                            onClick={() => aprovarPedidoCompra(pc.id)}
-                            disabled={salvando}
-                            className="px-3 py-1 rounded-lg bg-[#701D2B] text-white text-[11px] font-semibold"
-                          >
-                            Aprovar Compra
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
-            <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
-              <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
-                <Package className="w-5 h-5 text-[#701D2B]" />
-                Posição de Lotes em Estoque (Ordenado por Validade FEFO)
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
-                    <th className="py-3 px-4">Lote</th>
-                    <th className="py-3 px-3">Item (Insumo / Produto)</th>
-                    <th className="py-3 px-3">Validade FEFO</th>
-                    <th className="py-3 px-3">Saldo Atual</th>
-                    <th className="py-3 px-3">Situação Sanitária</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F5E8D8]">
-                  {lotes.map((l) => (
-                    <tr key={l.id} className="hover:bg-[#FBF5EE]">
-                      <td className="py-3 px-4 font-bold text-[#701D2B]">{l.codigo_lote}</td>
-                      <td className="py-3 px-3 font-medium text-[#542C20]">
-                        {l.ingredientes?.nome || l.produtos?.nome || '-'}
-                      </td>
-                      <td className="py-3 px-3 font-semibold">
-                        {l.data_validade?.split('-').reverse().join('/')}
-                      </td>
-                      <td className="py-3 px-3">
-                        {l.quantidade_atual} / {l.quantidade_inicial}
-                      </td>
-                      <td className="py-3 px-3 uppercase font-bold">{l.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 7. FINANCEIRO, DRE & FISCAL ==================== */}
-      {tipoModulo === 'financeiro' && (() => {
-        const receitaTotal = pedidosVenda
-          .filter((p) => p.status !== 'cancelado')
-          .reduce((acc, p) => acc + Number(p.valor_total || 0), 0);
-
-        return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC] space-y-3 text-xs">
-              <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-[#701D2B]" />
-                DRE Gerencial & Simulação Tributária
-              </h3>
-              <div className="divide-y divide-[#F5E8D8]">
-                <div className="py-2.5 flex justify-between">
-                  <span>(+) Receita Bruta de Vendas (Salão, Delivery & Eventos)</span>
-                  <strong className="text-emerald-700 flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> R$ {receitaTotal.toFixed(2)}
-                  </strong>
-                </div>
-                <div className="py-2.5 flex justify-between">
-                  <span>(-) Deduções & Simples Nacional Simulado (6,0%)</span>
-                  <strong className="text-red-700 flex items-center gap-1">
-                    <ArrowDownRight className="w-3.5 h-3.5" /> R$ {(receitaTotal * 0.06).toFixed(2)}
-                  </strong>
-                </div>
-                <div className="py-2.5 flex justify-between">
-                  <span>(-) Custo de Mercadoria Vendida (CMV Estimado 28%)</span>
-                  <strong className="text-red-700">R$ {(receitaTotal * 0.28).toFixed(2)}</strong>
-                </div>
-                <div className="py-3 flex justify-between text-sm font-bold text-[#701D2B] bg-[#FBF5EE] px-3 rounded-lg mt-2">
-                  <span>(=) Margem de Contribuição Operacional</span>
-                  <span>R$ {(receitaTotal * 0.66).toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC] space-y-3 text-xs">
-              <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-emerald-700" />
-                Contas Bancárias & Tesouraria
-              </h3>
-              {contasBancarias.map((cb) => (
-                <div
-                  key={cb.id}
-                  className="p-3.5 rounded-xl border border-[#E8D4BC] bg-[#FBF5EE] flex justify-between items-center"
-                >
-                  <div>
-                    <p className="font-bold text-[#542C20]">{cb.banco_nome}</p>
-                    <p className="text-[#7F7269]">
-                      Ag: {cb.agencia} • Conta: {cb.conta_numero} ({cb.tipo})
-                    </p>
-                  </div>
-                  <span className="text-base font-bold text-emerald-700">
-                    R$ {Number(cb.saldo_atual).toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ==================== 8. MANUTENÇÃO & SLA ==================== */}
       {tipoModulo === 'manutencao' && (
         <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
@@ -928,6 +1251,130 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AJUSTE DE INVENTÁRIO (ESTOQUE FEFO) */}
+      {modalAjusteLote && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 bg-[#701D2B] text-[#F5E8D8] flex items-center justify-between">
+              <h3 className="font-serif text-lg font-bold">
+                Ajuste de Inventário • {modalAjusteLote.codigo_lote}
+              </h3>
+              <button onClick={() => setModalAjusteLote(null)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={salvarAjusteInventario} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-[#542C20]">Nova Quantidade Contada *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={formQtdAjuste}
+                  onChange={(e) => setFormQtdAjuste(Number(e.target.value))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-[#542C20]">Justificativa / Motivo *</label>
+                <input
+                  type="text"
+                  required
+                  value={formMotivoAjuste}
+                  onChange={(e) => setFormMotivoAjuste(e.target.value)}
+                  placeholder="Ex: Conferência física mensal de almoxarifado"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalAjusteLote(null)}
+                  className="px-4 py-2 rounded-lg border border-[#E8D4BC]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-4 py-2 rounded-lg bg-[#701D2B] text-white font-semibold"
+                >
+                  Salvar Ajuste
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVO PEDIDO DE COMPRA */}
+      {modalNovoPc && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 bg-[#701D2B] text-[#F5E8D8] flex items-center justify-between">
+              <h3 className="font-serif text-lg font-bold">Emitir Pedido de Compra</h3>
+              <button onClick={() => setModalNovoPc(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={criarPedidoCompra} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-[#542C20]">Fornecedor Homologado *</label>
+                <select
+                  value={formFornId}
+                  onChange={(e) => setFormFornId(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC] bg-white"
+                >
+                  {fornecedores.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.codigo} — {f.nome_fantasia} ({f.categoria_fornecimento})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-bold text-[#542C20]">Valor Total do Pedido (R$) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={formValorPc}
+                  onChange={(e) => setFormValorPc(Number(e.target.value))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-[#542C20]">Descrição dos Insumos *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={formObsPc}
+                  onChange={(e) => setFormObsPc(e.target.value)}
+                  placeholder="Ex: Reposição de Manteiga Extra sem sal e Creme de Leite Fresco 35%..."
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNovoPc(false)}
+                  className="px-4 py-2 rounded-lg border border-[#E8D4BC]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-4 py-2 rounded-lg bg-[#701D2B] text-white font-semibold"
+                >
+                  Emitir Pedido
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
