@@ -158,7 +158,18 @@ export const ErpLayout: React.FC = () => {
             Ambiente Demonstrativo • Dados Fictícios
           </p>
         </div>
-      </aside>
+      <div className="p-4 border-t border-[#E8D4BC]/15 text-[11px] text-[#E8D4BC]/75">
+        <p className="font-medium">Arquitetura & Desenvolvimento</p>
+        <a
+          href="https://www.linkedin.com/in/ingridcmoura/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-0.5 inline-flex items-center gap-1 font-semibold text-[#C69A55] hover:underline"
+        >
+          Ingrid Moura • LinkedIn ↗
+        </a>
+      </div>
+    </aside>
 
       {/* Área Principal */}
       <div className="flex-1 flex flex-col min-w-0">
