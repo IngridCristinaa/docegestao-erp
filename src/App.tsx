@@ -9,6 +9,7 @@ import { BiSimuladorPage } from './pages/erp/BiSimuladorPage';
 import { ComercialPdvPage } from './pages/erp/ComercialPdvPage';
 import { ProducaoPcpPage } from './pages/erp/ProducaoPcpPage';
 import { FichasTecnicasPage } from './pages/erp/FichasTecnicasPage';
+import { QualidadeBpfPage } from './pages/erp/QualidadeBpfPage';
 import { ModuloCorporativoUnificadoPage } from './pages/erp/ModuloCorporativoUnificadoPage';
 
 export function App() {
@@ -28,6 +29,7 @@ export function App() {
             <Route path="comercial" element={<ComercialPdvPage />} />
             <Route path="producao" element={<ProducaoPcpPage />} />
             <Route path="fichas-tecnicas" element={<FichasTecnicasPage />} />
+            <Route path="qualidade" element={<QualidadeBpfPage />} />
             <Route path=":modulo" element={<ModuloCorporativoUnificadoPage />} />
           </Route>
 
