@@ -7,6 +7,8 @@ import { LojaDigitalPage } from './pages/LojaDigitalPage';
 import { DashboardExecutivoPage } from './pages/erp/DashboardExecutivoPage';
 import { BiSimuladorPage } from './pages/erp/BiSimuladorPage';
 import { ComercialPdvPage } from './pages/erp/ComercialPdvPage';
+import { ProducaoPcpPage } from './pages/erp/ProducaoPcpPage';
+import { FichasTecnicasPage } from './pages/erp/FichasTecnicasPage';
 import { ModuloCorporativoUnificadoPage } from './pages/erp/ModuloCorporativoUnificadoPage';
 
 export function App() {
@@ -24,6 +26,8 @@ export function App() {
             <Route path="dashboard" element={<DashboardExecutivoPage />} />
             <Route path="bi" element={<BiSimuladorPage />} />
             <Route path="comercial" element={<ComercialPdvPage />} />
+            <Route path="producao" element={<ProducaoPcpPage />} />
+            <Route path="fichas-tecnicas" element={<FichasTecnicasPage />} />
             <Route path=":modulo" element={<ModuloCorporativoUnificadoPage />} />
           </Route>
 
