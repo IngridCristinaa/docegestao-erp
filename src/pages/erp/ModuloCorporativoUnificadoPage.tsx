@@ -3,23 +3,33 @@ import { useParams } from 'react-router-dom';
 import {
   Package,
   Truck,
-  Wallet,
-  Receipt,
-  Wrench,
   QrCode,
   FolderKanban,
   FileCheck2,
   LockKeyhole,
   Scale,
+  Wrench,
   X,
-  ArrowUpRight,
-  ArrowDownRight,
   CheckCircle2,
   AlertTriangle,
   Star,
   Clock,
   SlidersHorizontal,
+  ArrowDownCircle,
+  PlusCircle,
+  Search,
+  DollarSign,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell,
+} from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { ModuloHeader } from '../../components/shared/ModuloHeader';
 import { useAuth } from '../../contexts/AuthContext';
@@ -34,7 +44,29 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
 
   // Estoque & FEFO
   const [lotes, setLotes] = useState<any[]>([]);
+  const [ingredientes, setIngredientes] = useState<any[]>([]);
   const [movimentacoesEstoque, setMovimentacoesEstoque] = useState<any[]>([]);
+  const [buscaEstoque, setBuscaEstoque] = useState('');
+  const [filtroStatusEstoque, setFiltroStatusEstoque] = useState<'todos' | 'liberado' | 'bloqueado'>('todos');
+
+  // Modal Nova Entrada de Lote (Inserir Item)
+  const [modalNovoLote, setModalNovoLote] = useState(false);
+  const [formIngredienteId, setFormIngredienteId] = useState('');
+  const [formCodigoLote, setFormCodigoLote] = useState('');
+  const [formValidadeLote, setFormValidadeLote] = useState('');
+  const [formQtdEntrada, setFormQtdEntrada] = useState<number>(5000);
+  const [formCustoUnitLote, setFormCustoUnitLote] = useState<number>(0.08);
+  const [formObsEntrada, setFormObsEntrada] = useState('');
+
+  // Modal Dar Baixa no Lote
+  const [modalBaixaLote, setModalBaixaLote] = useState<any | null>(null);
+  const [formTipoBaixa, setFormTipoBaixa] = useState<'saida_producao' | 'saida_venda' | 'perda'>(
+    'saida_producao'
+  );
+  const [formQtdBaixa, setFormQtdBaixa] = useState<number>(500);
+  const [formObsBaixa, setFormObsBaixa] = useState('');
+
+  // Modal Ajuste de Inventário
   const [modalAjusteLote, setModalAjusteLote] = useState<any | null>(null);
   const [formQtdAjuste, setFormQtdAjuste] = useState<number>(0);
   const [formMotivoAjuste, setFormMotivoAjuste] = useState('');
@@ -46,10 +78,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
   const [formFornId, setFormFornId] = useState('');
   const [formValorPc, setFormValorPc] = useState<number>(1500);
   const [formObsPc, setFormObsPc] = useState('');
-
-  // Financeiro & Fiscal (fallback caso acessado via slug genérico)
-  const [contasBancarias, setContasBancarias] = useState<any[]>([]);
-  const [pedidosVenda, setPedidosVenda] = useState<any[]>([]);
 
   // Patrimônio (QR)
   const [ativosPatrimonio, setAtivosPatrimonio] = useState<any[]>([]);
@@ -79,7 +107,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
   const [avisosLgpd, setAvisosLgpd] = useState<any[]>([]);
   const [incidentesLgpd, setIncidentesLgpd] = useState<any[]>([]);
 
-  // Classificação exata e separada de cada módulo pela rota
   const tipoModulo = useMemo(() => {
     const slug = modulo.toLowerCase();
     if (slug.includes('compra') || slug.includes('fornec') || slug.includes('supriment'))
@@ -91,8 +118,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     if (slug.includes('seguranc') || slug.includes('audit')) return 'seguranca';
     if (slug.includes('lgpd') || slug.includes('privacid')) return 'lgpd';
     if (slug.includes('manutenc')) return 'manutencao';
-    if (slug.includes('financ') || slug.includes('dre') || slug.includes('fiscal'))
-      return 'financeiro';
     return 'estoque';
   }, [modulo]);
 
@@ -101,18 +126,32 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     setErro(null);
     try {
       if (tipoModulo === 'estoque') {
-        const [resLotes, resMov] = await Promise.all([
+        const [resLotes, resIng, resMov] = await Promise.all([
           supabase
             .from('estoque_lotes')
-            .select('*, ingredientes(codigo, nome, unidade_medida), produtos(codigo_sku, nome)')
+            .select('*, ingredientes(codigo, nome), produtos(codigo_sku, nome)')
             .order('data_validade', { ascending: true }),
+          supabase
+            .from('ingredientes')
+            .select('id, codigo, nome, custo_medio')
+            .eq('ativo', true)
+            .order('nome', { ascending: true }),
           supabase
             .from('estoque_movimentacoes')
             .select('*, estoque_lotes(codigo_lote)')
             .order('created_at', { ascending: false })
             .limit(25),
         ]);
+
+        if (resLotes.error) throw resLotes.error;
+
         setLotes(resLotes.data || []);
+        const listaIng = resIng.data || [];
+        setIngredientes(listaIng);
+        if (listaIng.length > 0 && !formIngredienteId) {
+          setFormIngredienteId(listaIng[0].id);
+          setFormCustoUnitLote(Number(listaIng[0].custo_medio || 0.08));
+        }
         setMovimentacoesEstoque(resMov.data || []);
       } else if (tipoModulo === 'compras') {
         const [resForn, resPc] = await Promise.all([
@@ -128,13 +167,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           setFormFornId(listaForn[0].id);
         }
         setPedidosCompra(resPc.data || []);
-      } else if (tipoModulo === 'financeiro') {
-        const [resBancos, resPed] = await Promise.all([
-          supabase.from('contas_bancarias').select('*').eq('ativo', true),
-          supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(50),
-        ]);
-        setContasBancarias(resBancos.data || []);
-        setPedidosVenda(resPed.data || []);
       } else if (tipoModulo === 'patrimonio') {
         const [resAtivos, resMov] = await Promise.all([
           supabase
@@ -211,7 +243,119 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     carregarDados();
   }, [tipoModulo]);
 
-  // Ações de Estoque FEFO
+  // 1. INSERIR NOVO LOTE / ENTRADA DE ESTOQUE
+  const abrirModalNovoLote = () => {
+    const valPadrao = new Date();
+    valPadrao.setDate(valPadrao.getDate() + 45);
+    setFormCodigoLote(`LOT-2026-${String(Math.floor(100 + Math.random() * 899))}`);
+    setFormValidadeLote(valPadrao.toISOString().split('T')[0]);
+    setFormQtdEntrada(5000);
+    setFormObsEntrada('');
+    setModalNovoLote(true);
+  };
+
+  const salvarNovoLote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formIngredienteId || !formCodigoLote.trim() || formQtdEntrada <= 0) return;
+
+    setSalvando(true);
+    setErro(null);
+    try {
+      const { data: unSample } = await supabase.from('unidades').select('id').limit(1).maybeSingle();
+      const unidadeId =
+        lotes[0]?.unidade_id || unSample?.id || '11111111-1111-1111-1111-111111111101';
+
+      const { data: loteCriado, error: errLote } = await supabase
+        .from('estoque_lotes')
+        .insert({
+          unidade_id: unidadeId,
+          ingrediente_id: formIngredienteId,
+          codigo_lote: formCodigoLote.trim().toUpperCase(),
+          data_fabricacao: new Date().toISOString().split('T')[0],
+          data_validade: formValidadeLote,
+          quantidade_inicial: Number(formQtdEntrada),
+          quantidade_atual: Number(formQtdEntrada),
+          custo_unitario: Number(formCustoUnitLote),
+          status: 'liberado',
+        })
+        .select('id')
+        .single();
+
+      if (errLote) throw errLote;
+
+      if (loteCriado?.id) {
+        await supabase.from('estoque_movimentacoes').insert({
+          unidade_id: unidadeId,
+          lote_id: loteCriado.id,
+          tipo_movimentacao: 'entrada_compra',
+          quantidade: Number(formQtdEntrada),
+          custo_unitario: Number(formCustoUnitLote),
+          observacao:
+            formObsEntrada.trim() ||
+            `Entrada manual de lote ${formCodigoLote.trim().toUpperCase()} no almoxarifado.`,
+        });
+      }
+
+      setModalNovoLote(false);
+      await carregarDados();
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao inserir novo lote no estoque.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // 2. DAR BAIXA EM LOTE (PRODUÇÃO, VENDA OU PERDA)
+  const abrirModalBaixa = (lote: any) => {
+    setModalBaixaLote(lote);
+    setFormTipoBaixa('saida_producao');
+    setFormQtdBaixa(Math.min(500, Number(lote.quantidade_atual || 0)));
+    setFormObsBaixa('');
+  };
+
+  const confirmarBaixaLote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalBaixaLote || formQtdBaixa <= 0) return;
+
+    const saldoAtual = Number(modalBaixaLote.quantidade_atual || 0);
+    if (formQtdBaixa > saldoAtual) {
+      setErro(`Quantidade de baixa (${formQtdBaixa}) maior que o saldo do lote (${saldoAtual}).`);
+      return;
+    }
+
+    setSalvando(true);
+    setErro(null);
+    try {
+      const novoSaldo = saldoAtual - Number(formQtdBaixa);
+
+      const { error: errUpd } = await supabase
+        .from('estoque_lotes')
+        .update({ quantidade_atual: novoSaldo })
+        .eq('id', modalBaixaLote.id);
+
+      if (errUpd) throw errUpd;
+
+      await supabase.from('estoque_movimentacoes').insert({
+        unidade_id: modalBaixaLote.unidade_id,
+        lote_id: modalBaixaLote.id,
+        tipo_movimentacao: formTipoBaixa,
+        quantidade: Number(formQtdBaixa),
+        custo_unitario: Number(modalBaixaLote.custo_unitario || 0),
+        observacao:
+          formObsBaixa.trim() ||
+          `Baixa FEFO (${formTipoBaixa.replace('_', ' ')}) registrada no almoxarifado.`,
+      });
+
+      setModalBaixaLote(null);
+      await carregarDados();
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao registrar baixa do lote.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // 3. AJUSTE DE INVENTÁRIO
   const abrirAjusteLote = (lote: any) => {
     setModalAjusteLote(lote);
     setFormQtdAjuste(Number(lote.quantidade_atual || 0));
@@ -356,20 +500,30 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     switch (tipoModulo) {
       case 'estoque':
         return {
-          categoria: 'Módulo 5.6 • Almoxarifado, Lotes & Controle FEFO',
-          titulo: 'Controle de Estoque FEFO & Rastreabilidade de Lotes',
+          categoria: 'Módulo 5.6 • Almoxarifado, Lotes & Valoração FEFO',
+          titulo: 'Controle de Estoque FEFO, Valoração & Rastreabilidade',
           descricao:
-            'Gestão de saldos por lote, ordenação automática por data de validade (First-Expire, First-Out), inventário físico e Kardex de movimentações.',
-          csv: lotes,
-          botaoNovo: undefined,
-          acaoNovo: undefined,
+            'Valoração financeira do estoque em tempo real, entrada de novos lotes, baixas por produção/venda/perda e Kardex.',
+          csv: lotes.map((l) => ({
+            Lote: l.codigo_lote,
+            Item: l.ingredientes?.nome || l.produtos?.nome || '-',
+            Validade: l.data_validade,
+            Saldo_Atual: l.quantidade_atual,
+            Custo_Unitario_R$: Number(l.custo_unitario || 0).toFixed(4),
+            Valor_Total_R$: (
+              Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0)
+            ).toFixed(2),
+            Status: l.status,
+          })),
+          botaoNovo: 'Inserir Novo Lote',
+          acaoNovo: abrirModalNovoLote,
         };
       case 'compras':
         return {
           categoria: 'Módulo 5.5 • Suprimentos, Compras & Homologação',
           titulo: 'Pedidos de Compra & Fornecedores Homologados',
           descricao:
-            'Emissão e aprovação de ordens de compra, controle de lead time de entrega, condições comerciais e avaliação de SLA de fornecedores.',
+            'Emissão e aprovação de ordens de compra, controle de lead time de entrega e avaliação de SLA de fornecedores.',
           csv: pedidosCompra,
           botaoNovo: 'Novo Pedido de Compra',
           acaoNovo: () => setModalNovoPc(true),
@@ -379,7 +533,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           categoria: 'Módulo 5.7 • Patrimônio & Ativos Imobilizados (QR Code)',
           titulo: 'Tombamento, Etiquetas QR & Depreciação Contábil',
           descricao:
-            'Controle individual de fornos, batedeiras, câmaras frias e mobiliário com cálculo de depreciação linear e aprovação de movimentações.',
+            'Controle individual de fornos, batedeiras, câmaras frias e mobiliário com cálculo de depreciação linear.',
           csv: ativosPatrimonio,
           botaoNovo: undefined,
           acaoNovo: undefined,
@@ -389,7 +543,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           categoria: 'Módulo 5.13 • Projetos & Iniciativas Estratégicas',
           titulo: 'Portfólio de Projetos, Cronogramas & Entregáveis',
           descricao:
-            'Acompanhamento de expansão de unidades, lançamentos sazonais de confeitaria e implantação de melhorias contínuas.',
+            'Acompanhamento de expansão de unidades, lançamentos sazonais e implantação de melhorias contínuas.',
           csv: projetos,
           botaoNovo: undefined,
           acaoNovo: undefined,
@@ -399,7 +553,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           categoria: 'Módulo 5.14 • Gestão Eletrônica de Documentos (GED)',
           titulo: 'Repositório Institucional, Alvarás Sanitários & Contratos',
           descricao:
-            'Controle de versionamento, vigência documental, níveis de sigilo e assinatura eletrônica de alvarás sanitários e contratos.',
+            'Controle de versionamento, vigência documental, níveis de sigilo e assinatura eletrônica.',
           csv: documentosGed,
           botaoNovo: undefined,
           acaoNovo: undefined,
@@ -409,7 +563,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           categoria: 'Módulo 5.15 • Segurança da Informação & Auditoria',
           titulo: 'Monitoramento de Acessos, Alertas & Trilha de Auditoria',
           descricao:
-            'Rastreabilidade imutável de alterações em tabelas críticas, logs de autenticação RBAC e investigação de anomalias.',
+            'Rastreabilidade imutável de alterações em tabelas críticas, logs RBAC e investigação de anomalias.',
           csv: auditoriaLogs,
           botaoNovo: undefined,
           acaoNovo: undefined,
@@ -419,29 +573,20 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
           categoria: 'Módulo 5.16 • Governança & Privacidade de Dados (LGPD)',
           titulo: 'Inventário ROPA (Art. 37), Avisos de Privacidade & Incidentes',
           descricao:
-            'Conformidade com a Lei nº 13.709/2018: mapeamento de bases legais, prazos de retenção e gestão de incidentes.',
+            'Conformidade com a Lei nº 13.709/2018: mapeamento de bases legais, prazos de retenção e incidentes.',
           csv: inventarioLgpd,
           botaoNovo: undefined,
           acaoNovo: undefined,
         };
-      case 'manutencao':
+      default:
         return {
           categoria: 'Módulo 5.8 • Manutenção & SLA Operacional',
           titulo: 'Manutenção Preventiva & Corretiva de Equipamentos Críticos',
           descricao:
-            'Ordens de serviço técnicas para preservação da cadeia fria, calibração de termostatos e continuidade da produção.',
+            'Ordens de serviço técnicas para preservação da cadeia fria e continuidade da produção.',
           csv: ordensManutencao,
           botaoNovo: 'Nova OS Manutenção',
           acaoNovo: () => setModalNovaOs(true),
-        };
-      default:
-        return {
-          categoria: 'Módulo 5.10 • Financeiro & Tesouraria',
-          titulo: 'Disponibilidades Bancárias & Resultado',
-          descricao: 'Consolidação de saldos e movimentações financeiras.',
-          csv: contasBancarias,
-          botaoNovo: undefined,
-          acaoNovo: undefined,
         };
     }
   }, [
@@ -454,7 +599,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
     auditoriaLogs,
     inventarioLgpd,
     ordensManutencao,
-    contasBancarias,
+    ingredientes,
   ]);
 
   return (
@@ -478,122 +623,309 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== 1. ESTOQUE & FEFO (EXCLUSIVO) ==================== */}
+      {/* ==================== 1. ESTOQUE & FEFO (COMPLETO E VALORADO) ==================== */}
       {tipoModulo === 'estoque' && (() => {
         const valorTotalEstoque = lotes.reduce(
           (acc, l) => acc + Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0),
           0
         );
-        const lotesLiberados = lotes.filter((l) => l.status === 'liberado').length;
-        const lotesBloqueados = lotes.filter((l) => l.status !== 'liberado').length;
+        const valorLiberado = lotes
+          .filter((l) => l.status === 'liberado')
+          .reduce(
+            (acc, l) => acc + Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0),
+            0
+          );
+        const valorBloqueado = lotes
+          .filter((l) => l.status !== 'liberado')
+          .reduce(
+            (acc, l) => acc + Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0),
+            0
+          );
+
+        const lotesLiberadosCount = lotes.filter((l) => l.status === 'liberado').length;
+        const lotesBloqueadosCount = lotes.filter((l) => l.status !== 'liberado').length;
+
+        const lotesFiltrados = lotes.filter((l) => {
+          const nomeItem = (l.ingredientes?.nome || l.produtos?.nome || '').toLowerCase();
+          const codLote = (l.codigo_lote || '').toLowerCase();
+          const bateTexto =
+            !buscaEstoque.trim() ||
+            nomeItem.includes(buscaEstoque.toLowerCase()) ||
+            codLote.includes(buscaEstoque.toLowerCase());
+          const bateStatus =
+            filtroStatusEstoque === 'todos' ||
+            (filtroStatusEstoque === 'liberado' && l.status === 'liberado') ||
+            (filtroStatusEstoque === 'bloqueado' && l.status !== 'liberado');
+          return bateTexto && bateStatus;
+        });
+
+        // Dados para gráfico de valoração por lote
+        const dadosGraficoEstoque = lotes
+          .map((l) => ({
+            nome: l.ingredientes?.nome || l.produtos?.nome || l.codigo_lote,
+            lote: l.codigo_lote,
+            valor: Number(
+              (Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0)).toFixed(2)
+            ),
+            liberado: l.status === 'liberado',
+          }))
+          .sort((a, b) => b.valor - a.valor)
+          .slice(0, 8);
 
         return (
           <div className="space-y-6">
-            {/* 4 KPIs de Estoque */}
+            {/* 4 KPIs Detalhados de Valoração & Status */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
-                <span className="text-xs text-[#7F7269]">Valor Imobilizado em Estoque</span>
+                <div className="flex items-center justify-between text-xs text-[#7F7269]">
+                  <span>Valor Total do Estoque</span>
+                  <DollarSign className="w-4 h-4 text-[#701D2B]" />
+                </div>
                 <p className="text-2xl font-bold text-[#701D2B] mt-1">
                   R$ {valorTotalEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
+                <p className="text-[11px] text-[#7F7269] mt-1">
+                  {lotes.length} lote(s) ativo(s) no almoxarifado
+                </p>
               </div>
+
               <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
-                <span className="text-xs text-[#7F7269]">Lotes Liberados (Uso Imediato)</span>
-                <p className="text-2xl font-bold text-emerald-700 mt-1">{lotesLiberados}</p>
+                <span className="text-xs text-[#7F7269]">Capital Liberado para Produção</span>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">
+                  R$ {valorLiberado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                  {lotesLiberadosCount} lote(s) aprovado(s) pela Qualidade
+                </p>
               </div>
+
               <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
-                <span className="text-xs text-[#7F7269]">Quarentena / Bloqueados BPF</span>
-                <p className="text-2xl font-bold text-amber-700 mt-1">{lotesBloqueados}</p>
+                <span className="text-xs text-[#7F7269]">Retido / Quarentena BPF</span>
+                <p className="text-2xl font-bold text-amber-700 mt-1">
+                  R$ {valorBloqueado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-[11px] text-amber-700 font-semibold mt-1">
+                  {lotesBloqueadosCount} lote(s) aguardando liberação
+                </p>
               </div>
+
               <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
                 <span className="text-xs text-[#7F7269]">Movimentações Kardex</span>
                 <p className="text-2xl font-bold text-[#542C20] mt-1">
                   {movimentacoesEstoque.length}
                 </p>
+                <p className="text-[11px] text-[#7F7269] mt-1">
+                  Entradas, baixas FEFO e inventários
+                </p>
               </div>
             </div>
 
-            {/* Tabela de Lotes FEFO */}
+            {/* Gráfico de Composição Financeira do Estoque */}
+            {dadosGraficoEstoque.length > 0 && (
+              <div className="bg-white p-5 rounded-2xl border border-[#E8D4BC]">
+                <h3 className="font-serif text-lg font-bold text-[#542C20]">
+                  Distribuição Financeira por Lote / Insumo (R$)
+                </h3>
+                <p className="text-xs text-[#7F7269] mb-4">
+                  Verde: capital liberado para uso • Âmbar: capital bloqueado em quarentena sanitária.
+                </p>
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dadosGraficoEstoque}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F5E8D8" />
+                      <XAxis dataKey="nome" tick={{ fontSize: 10, fill: '#542C20' }} />
+                      <YAxis
+                        tickFormatter={(v) => `R$ ${v}`}
+                        tick={{ fontSize: 10, fill: '#7F7269' }}
+                      />
+                      <Tooltip
+                        formatter={(val: any) =>
+                          `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                        }
+                      />
+                      <Bar dataKey="valor" name="Valor em Estoque" radius={[6, 6, 0, 0]}>
+                        {dadosGraficoEstoque.map((item, idx) => (
+                          <Cell key={idx} fill={item.liberado ? '#15803d' : '#d97706'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de Pesquisa, Filtros e Tabela Detalhada FEFO */}
             <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
-              <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40 flex justify-between items-center">
+              <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40 flex flex-wrap justify-between items-center gap-3">
                 <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
                   <Package className="w-5 h-5 text-[#701D2B]" />
-                  Posição de Lotes em Estoque (Fila FEFO — Vencimento Mais Próximo Primeiro)
+                  Posição Analítica de Lotes FEFO (Validade, Custos & Baixas)
                 </h3>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-[#7F7269] absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      value={buscaEstoque}
+                      onChange={(e) => setBuscaEstoque(e.target.value)}
+                      placeholder="Buscar insumo ou lote..."
+                      className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-[#E8D4BC] bg-white"
+                    />
+                  </div>
+
+                  <select
+                    value={filtroStatusEstoque}
+                    onChange={(e) => setFiltroStatusEstoque(e.target.value as any)}
+                    className="px-2.5 py-1.5 text-xs rounded-lg border border-[#E8D4BC] bg-white"
+                  >
+                    <option value="todos">Todos os Status</option>
+                    <option value="liberado">Somente Liberados</option>
+                    <option value="bloqueado">Somente Bloqueados</option>
+                  </select>
+
+                  {podeEditar() && (
+                    <button
+                      onClick={abrirModalNovoLote}
+                      className="px-3.5 py-1.5 rounded-lg bg-[#701D2B] text-white text-xs font-semibold inline-flex items-center gap-1.5"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-[#C69A55]" />
+                      Inserir Novo Lote
+                    </button>
+                  )}
+                </div>
               </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-[#F5E8D8]/60 border-b border-[#E8D4BC] text-[11px] uppercase text-[#542C20]">
                       <th className="py-3 px-4">Lote</th>
                       <th className="py-3 px-3">Insumo / Produto</th>
-                      <th className="py-3 px-3">Validade FEFO</th>
-                      <th className="py-3 px-3">Saldo Atual</th>
-                      <th className="py-3 px-3">Custo Total Lote</th>
+                      <th className="py-3 px-3">Validade & Prazo FEFO</th>
+                      <th className="py-3 px-3">Saldo Físico</th>
+                      <th className="py-3 px-3">Custo Unit.</th>
+                      <th className="py-3 px-3">Valor Total Lote</th>
                       <th className="py-3 px-3">Situação</th>
-                      <th className="py-3 px-4 text-right">Inventário</th>
+                      <th className="py-3 px-4 text-right">Operações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F5E8D8]">
-                    {lotes.map((l) => {
-                      const pct =
-                        Number(l.quantidade_inicial) > 0
-                          ? Math.min(
-                              100,
-                              Math.round(
-                                (Number(l.quantidade_atual) / Number(l.quantidade_inicial)) * 100
+                    {loading ? (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-[#7F7269]">
+                          Carregando posição de lotes FEFO...
+                        </td>
+                      </tr>
+                    ) : lotesFiltrados.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-[#7F7269]">
+                          Nenhum lote encontrado para o filtro aplicado.
+                        </td>
+                      </tr>
+                    ) : (
+                      lotesFiltrados.map((l) => {
+                        const pct =
+                          Number(l.quantidade_inicial) > 0
+                            ? Math.min(
+                                100,
+                                Math.round(
+                                  (Number(l.quantidade_atual) / Number(l.quantidade_inicial)) * 100
+                                )
                               )
-                            )
-                          : 0;
-                      const custoLote =
-                        Number(l.quantidade_atual || 0) * Number(l.custo_unitario || 0);
+                            : 0;
+                        const custoUnit = Number(l.custo_unitario || 0);
+                        const valorLote = Number(l.quantidade_atual || 0) * custoUnit;
 
-                      return (
-                        <tr key={l.id} className="hover:bg-[#FBF5EE]">
-                          <td className="py-3 px-4 font-bold text-[#701D2B]">{l.codigo_lote}</td>
-                          <td className="py-3 px-3 font-semibold text-[#542C20]">
-                            {l.ingredientes?.nome || l.produtos?.nome || '-'}
-                          </td>
-                          <td className="py-3 px-3 font-semibold">
-                            {l.data_validade?.split('-').reverse().join('/')}
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="font-semibold">
-                              {l.quantidade_atual} / {l.quantidade_inicial}{' '}
-                              {l.ingredientes?.unidade_medida || 'un'}
-                            </div>
-                            <div className="w-24 h-1.5 bg-[#F5E8D8] rounded-full mt-1 overflow-hidden">
-                              <div
-                                className="h-full bg-[#701D2B]"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 font-bold">R$ {custoLote.toFixed(2)}</td>
-                          <td className="py-3 px-3">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                l.status === 'liberado'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {l.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {podeEditar() && (
-                              <button
-                                onClick={() => abrirAjusteLote(l)}
-                                className="px-2.5 py-1 rounded-lg border border-[#E8D4BC] bg-white hover:bg-[#F5E8D8] text-[#542C20] text-[11px] font-semibold inline-flex items-center gap-1"
+                        // Cálculo de dias para vencimento
+                        const diasVencimento = l.data_validade
+                          ? Math.ceil(
+                              (new Date(l.data_validade + 'T12:00:00').getTime() -
+                                new Date().getTime()) /
+                                (1000 * 60 * 60 * 24)
+                            )
+                          : 999;
+
+                        return (
+                          <tr key={l.id} className="hover:bg-[#FBF5EE]">
+                            <td className="py-3 px-4 font-bold text-[#701D2B]">{l.codigo_lote}</td>
+                            <td className="py-3 px-3">
+                              <div className="font-semibold text-[#542C20]">
+                                {l.ingredientes?.nome || l.produtos?.nome || 'Insumo Cadastrado'}
+                              </div>
+                              <div className="text-[11px] text-[#7F7269]">
+                                Cód: {l.ingredientes?.codigo || l.produtos?.codigo_sku || '-'}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-semibold">
+                                {l.data_validade?.split('-').reverse().join('/')}
+                              </div>
+                              <span
+                                className={`text-[10px] font-bold ${
+                                  diasVencimento <= 15
+                                    ? 'text-red-700'
+                                    : diasVencimento <= 30
+                                    ? 'text-amber-700'
+                                    : 'text-emerald-700'
+                                }`}
                               >
-                                <SlidersHorizontal className="w-3 h-3" /> Ajustar
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                                {diasVencimento < 0
+                                  ? `Vencido há ${Math.abs(diasVencimento)}d`
+                                  : `Vence em ${diasVencimento} dia(s)`}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-semibold">
+                                {Number(l.quantidade_atual).toLocaleString('pt-BR')} /{' '}
+                                {Number(l.quantidade_inicial).toLocaleString('pt-BR')} g/un
+                              </div>
+                              <div className="w-24 h-1.5 bg-[#F5E8D8] rounded-full mt-1 overflow-hidden">
+                                <div
+                                  className="h-full bg-[#701D2B]"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-[#7F7269]">R$ {custoUnit.toFixed(4)}</td>
+                            <td className="py-3 px-3 font-bold text-[#542C20]">
+                              R$ {valorLote.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  l.status === 'liberado'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
+                              >
+                                {l.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right space-x-1.5">
+                              {podeEditar() &&
+                                l.status === 'liberado' &&
+                                Number(l.quantidade_atual) > 0 && (
+                                  <button
+                                    onClick={() => abrirModalBaixa(l)}
+                                    className="px-2.5 py-1 rounded-lg bg-[#701D2B] text-white text-[11px] font-semibold inline-flex items-center gap-1"
+                                  >
+                                    <ArrowDownCircle className="w-3 h-3 text-[#C69A55]" /> Dar Baixa
+                                  </button>
+                                )}
+                              {podeEditar() && (
+                                <button
+                                  onClick={() => abrirAjusteLote(l)}
+                                  className="px-2.5 py-1 rounded-lg border border-[#E8D4BC] bg-white hover:bg-[#F5E8D8] text-[#542C20] text-[11px] font-semibold inline-flex items-center gap-1"
+                                >
+                                  <SlidersHorizontal className="w-3 h-3" /> Ajustar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -603,7 +935,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
             <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
               <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
                 <h3 className="font-serif text-lg font-bold text-[#542C20]">
-                  Kardex — Histórico de Movimentações de Estoque
+                  Kardex — Histórico de Entradas, Baixas FEFO & Inventários
                 </h3>
               </div>
               <div className="overflow-x-auto">
@@ -614,25 +946,42 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
                       <th className="py-3 px-3">Lote</th>
                       <th className="py-3 px-3">Tipo Movimentação</th>
                       <th className="py-3 px-3">Quantidade</th>
+                      <th className="py-3 px-3">Valor Movimentado</th>
                       <th className="py-3 px-3">Observação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F5E8D8]">
-                    {movimentacoesEstoque.map((m) => (
-                      <tr key={m.id}>
-                        <td className="py-2.5 px-4 text-[#7F7269]">
-                          {new Date(m.created_at).toLocaleString('pt-BR')}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-[#701D2B]">
-                          {m.estoque_lotes?.codigo_lote || '-'}
-                        </td>
-                        <td className="py-2.5 px-3 uppercase font-semibold">
-                          {m.tipo_movimentacao.replace('_', ' ')}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold">{m.quantidade}</td>
-                        <td className="py-2.5 px-3 text-[#7F7269]">{m.observacao || '-'}</td>
-                      </tr>
-                    ))}
+                    {movimentacoesEstoque.map((m) => {
+                      const valMov = Number(m.quantidade || 0) * Number(m.custo_unitario || 0);
+                      return (
+                        <tr key={m.id}>
+                          <td className="py-2.5 px-4 text-[#7F7269]">
+                            {new Date(m.created_at).toLocaleString('pt-BR')}
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-[#701D2B]">
+                            {m.estoque_lotes?.codigo_lote || '-'}
+                          </td>
+                          <td className="py-2.5 px-3 uppercase font-semibold">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] ${
+                                m.tipo_movimentacao.startsWith('entrada')
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {m.tipo_movimentacao.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-bold">
+                            {Number(m.quantidade).toLocaleString('pt-BR')}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-[#542C20]">
+                            R$ {valMov.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-3 text-[#7F7269]">{m.observacao || '-'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -641,7 +990,7 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         );
       })()}
 
-      {/* ==================== 2. COMPRAS & FORNECEDORES (EXCLUSIVO) ==================== */}
+      {/* ==================== 2. COMPRAS & FORNECEDORES ==================== */}
       {tipoModulo === 'compras' && (() => {
         const valorComprasTotal = pedidosCompra.reduce(
           (acc, p) => acc + Number(p.valor_total || 0),
@@ -658,7 +1007,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
 
         return (
           <div className="space-y-6">
-            {/* 4 KPIs de Compras */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-[#E8D4BC]">
                 <span className="text-xs text-[#7F7269]">Fornecedores Homologados</span>
@@ -682,7 +1030,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Tabela de Pedidos de Compra */}
             <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
               <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
                 <h3 className="font-serif text-lg font-bold text-[#542C20] flex items-center gap-2">
@@ -764,7 +1111,6 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Carteira de Fornecedores Homologados */}
             <div className="bg-white rounded-2xl border border-[#E8D4BC] overflow-hidden">
               <div className="p-4 border-b border-[#E8D4BC] bg-[#F5E8D8]/40">
                 <h3 className="font-serif text-lg font-bold text-[#542C20]">
@@ -1236,7 +1582,8 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
                 {ordensManutencao.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-6 text-center text-[#7F7269]">
-                      Nenhuma OS aberta no momento. Clique em "Nova OS Manutenção" para registrar.
+                      Nenhuma OS aberta no momento. Clique em &ldquo;Nova OS Manutenção&rdquo; para
+                      registrar.
                     </td>
                   </tr>
                 ) : (
@@ -1255,7 +1602,211 @@ export const ModuloCorporativoUnificadoPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL AJUSTE DE INVENTÁRIO (ESTOQUE FEFO) */}
+      {/* MODAL 1: INSERIR NOVO LOTE NO ESTOQUE */}
+      {modalNovoLote && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 bg-[#701D2B] text-[#F5E8D8] flex items-center justify-between">
+              <h3 className="font-serif text-lg font-bold">Inserir Novo Lote no Estoque</h3>
+              <button onClick={() => setModalNovoLote(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={salvarNovoLote} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-[#542C20]">Insumo / Matéria-Prima *</label>
+                <select
+                  value={formIngredienteId}
+                  onChange={(e) => {
+                    setFormIngredienteId(e.target.value);
+                    const ing = ingredientes.find((i) => i.id === e.target.value);
+                    if (ing) setFormCustoUnitLote(Number(ing.custo_medio || 0.08));
+                  }}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC] bg-white"
+                >
+                  {ingredientes.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      {ing.codigo} — {ing.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-[#542C20]">Código do Lote *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formCodigoLote}
+                    onChange={(e) => setFormCodigoLote(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-[#542C20]">Data de Validade (FEFO) *</label>
+                  <input
+                    type="date"
+                    required
+                    value={formValidadeLote}
+                    onChange={(e) => setFormValidadeLote(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-[#542C20]">Quantidade de Entrada (g/un) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={formQtdEntrada}
+                    onChange={(e) => setFormQtdEntrada(Number(e.target.value))}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-[#542C20]">Custo Unitário (R$) *</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    required
+                    value={formCustoUnitLote}
+                    onChange={(e) => setFormCustoUnitLote(Number(e.target.value))}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#FBF5EE] border border-[#E8D4BC] flex justify-between font-bold text-[#542C20]">
+                <span>Valor Total desta Entrada:</span>
+                <span className="text-[#701D2B]">
+                  R${' '}
+                  {(Number(formQtdEntrada || 0) * Number(formCustoUnitLote || 0)).toLocaleString(
+                    'pt-BR',
+                    { minimumFractionDigits: 2 }
+                  )}
+                </span>
+              </div>
+
+              <div>
+                <label className="font-bold text-[#542C20]">Nota Fiscal / Observação</label>
+                <input
+                  type="text"
+                  value={formObsEntrada}
+                  onChange={(e) => setFormObsEntrada(e.target.value)}
+                  placeholder="Ex: Recebimento NF 4581 — Lote inspecionado"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNovoLote(false)}
+                  className="px-4 py-2 rounded-lg border border-[#E8D4BC]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-4 py-2 rounded-lg bg-[#701D2B] text-white font-semibold"
+                >
+                  {salvando ? 'Salvando...' : 'Registrar Entrada'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: DAR BAIXA NO LOTE */}
+      {modalBaixaLote && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-[#E8D4BC] overflow-hidden">
+            <div className="p-4 bg-[#701D2B] text-[#F5E8D8] flex items-center justify-between">
+              <h3 className="font-serif text-lg font-bold">
+                Dar Baixa FEFO • {modalBaixaLote.codigo_lote}
+              </h3>
+              <button onClick={() => setModalBaixaLote(null)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={confirmarBaixaLote} className="p-5 space-y-4 text-xs">
+              <div className="p-3 rounded-xl bg-[#FBF5EE] border border-[#E8D4BC]">
+                <p className="font-bold text-[#542C20]">
+                  {modalBaixaLote.ingredientes?.nome || modalBaixaLote.produtos?.nome}
+                </p>
+                <p className="text-[#7F7269] mt-0.5">
+                  Saldo disponível neste lote:{' '}
+                  <strong>
+                    {Number(modalBaixaLote.quantidade_atual).toLocaleString('pt-BR')} g/un
+                  </strong>
+                </p>
+              </div>
+
+              <div>
+                <label className="font-bold text-[#542C20]">Motivo da Baixa *</label>
+                <select
+                  value={formTipoBaixa}
+                  onChange={(e) => setFormTipoBaixa(e.target.value as any)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC] bg-white"
+                >
+                  <option value="saida_producao">Saída para Produção (Confeitaria / PCP)</option>
+                  <option value="saida_venda">Saída por Venda Direta / Balcão</option>
+                  <option value="perda">Perda / Descarte Sanitário</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-[#542C20]">Quantidade a Baixar *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  max={Number(modalBaixaLote.quantidade_atual)}
+                  required
+                  value={formQtdBaixa}
+                  onChange={(e) => setFormQtdBaixa(Number(e.target.value))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[#542C20]">Observação / Ordem de Produção</label>
+                <input
+                  type="text"
+                  value={formObsBaixa}
+                  onChange={(e) => setFormObsBaixa(e.target.value)}
+                  placeholder="Ex: Requisição para OP-2026-004 (Ganache)"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-[#E8D4BC]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalBaixaLote(null)}
+                  className="px-4 py-2 rounded-lg border border-[#E8D4BC]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-4 py-2 rounded-lg bg-[#701D2B] text-white font-semibold"
+                >
+                  {salvando ? 'Processando...' : 'Confirmar Baixa'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: AJUSTE DE INVENTÁRIO */}
       {modalAjusteLote && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-[#E8D4BC] overflow-hidden">
